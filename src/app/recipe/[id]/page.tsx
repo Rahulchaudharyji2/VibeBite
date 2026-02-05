@@ -2,11 +2,8 @@
 
 import { motion } from "framer-motion";
 import { ArrowLeft, Clock, Flame, Users, ShoppingBag, Utensils, Share2, Heart } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-
-
-import { useSearchParams } from "next/navigation";
 
 // Smart Content Generator Helper
 function generateSmartRecipeContent(title: string) {
@@ -36,9 +33,11 @@ function generateSmartRecipeContent(title: string) {
     return { ingredients, instructions, science };
 }
 
-export default function RecipeDetail({ params }: { params: { id: string } }) {
+export default function RecipeDetail() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const params = useParams();
+  const id = params?.id as string;
   
   const [recipe, setRecipe] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -52,7 +51,7 @@ export default function RecipeDetail({ params }: { params: { id: string } }) {
        if (title) {
            const smartContent = generateSmartRecipeContent(title);
            setRecipe({
-               id: params.id,
+               id: id,
                title: title,
                image: searchParams.get("image") || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c",
                time: searchParams.get("time") || "30 min",
@@ -67,7 +66,7 @@ export default function RecipeDetail({ params }: { params: { id: string } }) {
 
        // Priority 2: Fallback to API fetch (Likely to fail or lack data, but worth a try)
        try {
-         const res = await fetch(`/api/recipe/${params.id}`);
+         const res = await fetch(`/api/recipe/${id}`);
          if (res.ok) {
             const data = await res.json();
             setRecipe(data);
@@ -89,7 +88,7 @@ export default function RecipeDetail({ params }: { params: { id: string } }) {
        }
     }
     resolveRecipe();
-  }, [params.id, searchParams]);
+  }, [id, searchParams]);
 
   if (loading) {
       return <div className="min-h-screen mesh-gradient flex items-center justify-center text-white">Loading...</div>;
