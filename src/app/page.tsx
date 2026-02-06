@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ArrowRight, Sparkles, ChefHat, Search, Heart, Music, CheckCircle, Smartphone, Globe, Instagram, Twitter, Facebook } from "lucide-react";
+import { ArrowRight, Sparkles, ChefHat, Search, Heart, Music, CheckCircle, Smartphone, Globe, Instagram, Twitter, Facebook, User, LogOut } from "lucide-react";
 import Link from "next/link";
 import { signIn, useSession } from "next-auth/react";
 
@@ -13,6 +13,47 @@ export default function Home() {
       {/* Background Ambience */}
       <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[120px] mix-blend-screen animate-pulse" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-600/20 rounded-full blur-[120px] mix-blend-screen animate-pulse delay-1000" />
+
+      {/* Persistent Navbar */}
+      <nav className="absolute top-0 left-0 right-0 z-50 px-6 py-6">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+            <Link href="/" className="text-2xl font-black tracking-tighter hover:scale-105 transition-transform">
+                Vibe<span className="text-[var(--color-creamy-gold)]">Bite</span>
+            </Link>
+
+            <div className="flex items-center gap-4">
+                {session ? (
+                    <div className="flex items-center gap-4">
+                         <Link href="/dashboard" className="hidden sm:block text-sm font-medium text-white/70 hover:text-white transition-colors">Dashboard</Link>
+                         <div className="flex items-center gap-3 glass-card px-3 py-1.5 rounded-full border border-white/10">
+                            {session.user?.image ? (
+                                <img src={session.user.image} alt="Profile" className="w-8 h-8 rounded-full border border-white/20" />
+                            ) : (
+                                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+                                    <User size={16} />
+                                </div>
+                            )}
+                            <span className="font-medium text-sm hidden sm:block pr-1">{session.user?.name?.split(' ')[0]}</span>
+                        </div>
+                        <button 
+                            onClick={() => import("next-auth/react").then(({signOut}) => signOut())}
+                            className="p-2.5 glass-card rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-all"
+                            title="Sign Out"
+                        >
+                            <LogOut size={18} />
+                        </button>
+                    </div>
+                ) : (
+                    <button 
+                        onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
+                        className="px-6 py-2.5 glass-card rounded-full font-medium text-sm hover:bg-white hover:text-black transition-all border border-white/10"
+                    >
+                        Sign In
+                    </button>
+                )}
+            </div>
+        </div>
+      </nav>
 
       {/* Hero Section */}
       <section className="relative z-10 flex flex-col items-center justify-center min-h-screen text-center px-4 pt-20">
