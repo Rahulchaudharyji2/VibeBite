@@ -6,28 +6,55 @@ import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 // Smart Content Generator Helper
+// Smart Content Generator Helper
 function generateSmartRecipeContent(title: string) {
     const t = title.toLowerCase();
-    let ingredients = ["Salt", "Pepper", "Olive Oil"];
-    let instructions = "Cook ingredients together until done. Serve hot.";
+    
+    // Default fallback
+    let ingredients = ["Salt", "Pepper", "Olive Oil", "Garlic", "Onion"];
+    let instructions = "1. Prep ingredients.\n2. Cook over medium heat until done.\n3. Season to taste and serve.";
     let science = "This dish provides a balanced mix of macronutrients.";
 
-    if (t.includes("soup") || t.includes("stew")) {
+    if (t.includes("soup") || t.includes("stew") || t.includes("chili")) {
         ingredients = ["Vegetable Broth", "Carrots", "Celery", "Onions", "Garlic", "Thyme", "Bay Leaf"];
-        instructions = "1. Sauté onions and garlic.\n2. Add vegetables and broth.\n3. Simmer for 30 minutes.\n4. Season and serve hot.";
+        instructions = "1. Sauté onions and garlic.\n2. Add vegetables and broth.\n3. Simmer for 30-45 minutes.\n4. Season and serve hot.";
         science = "Soups are excellent for hydration and nutrient absorption.";
-    } else if (t.includes("salad")) {
+    } else if (t.includes("salad") || t.includes("bowl")) {
         ingredients = ["Mixed Greens", "Tomatoes", "Cucumber", "Vinaigrette", "Nuts", "Feta Cheese"];
-        instructions = "1. Wash and chop vegetables.\n2. Toss with dressing.\n3. Top with nuts and cheese.\n4. Serve fresh.";
+        instructions = "1. Wash and chop vegetables.\n2. Toss with dressing just before serving.\n3. Top with nuts and cheese.\n4. Serve fresh.";
         science = "Raw vegetables in salads retain maximum enzyme activity and vitamins.";
-    } else if (t.includes("chicken")) {
+    } else if (t.includes("chicken") || t.includes("poultry")) {
         ingredients = ["Chicken Breast", "Lemon", "Herbs", "Garlic", "Butter", "Asparagus"];
-        instructions = "1. Season chicken with herbs.\n2. Pan sear until golden.\n3. Bake for 15 minutes.\n4. Rest before serving.";
+        instructions = "1. Season chicken generously with herbs.\n2. Pan sear until golden brown.\n3. Bake for 15 minutes at 400°F.\n4. Rest for 5 mins before serving.";
         science = "Chicken is a high-quality protein source essential for muscle repair.";
-    } else if (t.includes("cake") || t.includes("dessert")) {
+    } else if (t.includes("curry") || t.includes("masala") || t.includes("korma")) {
+        ingredients = ["Coconut Milk", "Curry Paste", "Onion", "Ginger", "Garlic", "Cilantro", "Rice"];
+        instructions = "1. Sauté aromatics (onion, ginger, garlic).\n2. Toast spices/curry paste.\n3. Add protein and coconut milk.\n4. Simmer until tender. Serve with rice.";
+        science = "Spices like turmeric in curry have powerful anti-inflammatory properties.";
+    } else if (t.includes("pasta") || t.includes("spaghetti") || t.includes("noodle")) {
+        ingredients = ["Pasta", "Tomato Sauce", "Basil", "Parmesan Cheese", "Garlic", "Olive Oil"];
+        instructions = "1. Boil salted water and cook pasta al dente.\n2. Simmer sauce with garlic and herbs.\n3. Toss pasta in sauce.\n4. Top with fresh cheese.";
+        science = "Carbohydrates in pasta provide readily available glucose for energy.";
+    } else if (t.includes("beef") || t.includes("steak") || t.includes("burger")) {
+        ingredients = ["Beef", "Rosemary", "Garlic", "Butter", "Salt", "Black Pepper"];
+        instructions = "1. Season meat with salt and pepper.\n2. Sear in a hot skillet.\n3. Baste with butter and herbs.\n4. Rest meat to retain juices.";
+        science = "Red meat is rich in heme iron and B-vitamins for energy metabolism.";
+    } else if (t.includes("fish") || t.includes("salmon") || t.includes("seafood") || t.includes("shrimp")) {
+        ingredients = ["Fish/Seafood", "Lemon", "Dill", "Butter", "Garlic", "White Wine"];
+        instructions = "1. Pat seafood dry and season.\n2. Pan fry or bake gently.\n3. Finish with lemon and butter.\n4. Serve immediately.";
+        science = "Seafood is the best source of Omega-3 fatty acids for brain health.";
+    } else if (t.includes("rice") || t.includes("risotto") || t.includes("pilaf")) {
+        ingredients = ["Rice", "Broth", "Onion", "Butter", "Saffron", "Peas"];
+        instructions = "1. Toast rice in butter.\n2. Add broth slowly while stirring.\n3. Cook until creamy and tender.\n4. Finish with parmesan.";
+        science = "Rice provides easily digestible energy and runs cleanly in the body.";
+    } else if (t.includes("cake") || t.includes("dessert") || t.includes("cookie") || t.includes("pie")) {
         ingredients = ["Flour", "Sugar", "Eggs", "Butter", "Vanilla Extract", "Baking Powder"];
-        instructions = "1. Cream butter and sugar.\n2. Mix dry ingredients.\n3. Bake at 350°F (175°C) for 25 mins.\n4. Cool and frost.";
+        instructions = "1. Cream butter and sugar.\n2. Mix dry ingredients.\n3. Bake at 350°F (175°C) until golden.\n4. Cool completely before serving.";
         science = "Sugar provides quick energy, while fats add flavor and texture.";
+    } else if (t.includes("smoothie") || t.includes("drink") || t.includes("juice")) {
+        ingredients = ["Fruit", "Yogurt/Milk", "Honey", "Ice", "Spinach"];
+        instructions = "1. Combine all ingredients in a blender.\n2. Blend on high until smooth.\n3. Pour into a chilled glass.";
+        science = "Blending fruits breaks down cell walls, making nutrients easier to absorb.";
     }
 
     return { ingredients, instructions, science };
@@ -69,7 +96,19 @@ export default function RecipeDetail() {
          const res = await fetch(`/api/recipe/${id}`);
          if (res.ok) {
             const data = await res.json();
-            setRecipe(data);
+            
+            // If API lacks details (likely), use smart generator
+            if (!data.ingredients || data.ingredients.length <= 1 || data.ingredients[0].includes("unavailable")) {
+                const smart = generateSmartRecipeContent(data.title);
+                setRecipe({
+                    ...data,
+                    description: data.description && data.description.length > 50 ? data.description : smart.instructions,
+                    ingredients: smart.ingredients,
+                    scienceNote: smart.science
+                });
+            } else {
+                setRecipe(data);
+            }
          } else {
              // Ultimate Fallback if direct link and API fails
              setRecipe({
@@ -151,11 +190,14 @@ export default function RecipeDetail() {
             
             {/* The Decision: Result Steps */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
-                 <button className="py-6 rounded-2xl bg-white text-black font-bold text-xl flex flex-col items-center justify-center gap-2 hover:scale-[1.02] transition-transform shadow-lg group">
+                 <button 
+                    onClick={() => window.open(`https://www.google.com/search?q=${encodeURIComponent(recipe.title + " recipe")}`, '_blank')}
+                    className="py-6 rounded-2xl bg-white text-black font-bold text-xl flex flex-col items-center justify-center gap-2 hover:scale-[1.02] transition-transform shadow-lg group"
+                 >
                     <div className="flex items-center gap-3">
-                        <Utensils size={24} /> Option A
+                        <Utensils size={24} /> Full Recipe
                     </div>
-                    <span className="text-sm font-normal text-gray-600">Get Recipe & Cook</span>
+                    <span className="text-sm font-normal text-gray-600">Find on Web & Cook</span>
                  </button>
                  
                  <button 

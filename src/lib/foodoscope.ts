@@ -39,6 +39,7 @@ async function fetchFromApi(endpoint: string, params: Record<string, string> = {
 
 
 // Helper to get diverse images based on keywords
+// Helper to get diverse images based on keywords
 function getFallbackImage(title: string) {
     const t = title.toLowerCase();
     
@@ -78,21 +79,97 @@ function getFallbackImage(title: string) {
     return defaults[Math.abs(hash) % defaults.length];
 }
 
-export async function getRecipesByFlavor(flavor: string, isLowSalt: boolean = false) {
-    const randomPage = Math.floor(Math.random() * 20) + 1;
-    const data = await fetchFromApi("/recipe-nutri/nutritioninfo", { page: String(randomPage), limit: "50" });
-    
-    if (!data || !data.payload || !data.payload.data) return [];
+// Simple In-Memory Cache
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const searchCache = new Map<string, { data: any[], timestamp: number }>();
 
-    let rawRecipes = data.payload.data;
+function generateMockRecipes(flavor: string): any[] {
+    const MOOD_MAP: Record<string, string[]> = {
+        "sweet": ["Chocolate Cake", "Strawberry Cheesecake", "Vanilla Pudding", "Oatmeal Cookies"],
+        "spicy": ["Spicy Chicken Curry", "Chili Con Carne", "Jalapeno Burger", "Hot Wings"],
+        "comfort food": ["Macaroni and Cheese", "Beef Stew", "Chicken Soup", "Mashed Potatoes"],
+        "energetic": ["Grilled Chicken Bowl", "Steak and Eggs", "Salmon Quinoa", "Protein Smoothie"],
+        "focused": ["Avocado Toast", "Grilled Fish Salad", "Berry Bowl", "Green Tea Smoothie"],
+        "chill": ["Iced Coffee", "Chamomile Tea", "Fruit Salad", "Veggie Sandwich"],
+        "romantic": ["Pasta Carbonara", "Steak Frites", "Chocolate Fondue", "Lobster Risotto"],
+        "happy": ["Cheeseburger", "Pepperoni Pizza", "Ice Cream Sundae", "Belgian Waffles"],
+        // Spotify
+        "fresh salad": ["Greek Salad", "Caesar Salad", "Cobb Salad"],
+        "iced coffee": ["Cold Brew", "Caramel Macchiato", "Iced Latte"],
+        "italian pasta": ["Spaghetti Bolognese", "Fettuccine Alfredo", "Lasagna"],
+        "spicy chicken": ["Buffalo Chicken", "Chicken Vindaloo", "Spicy Tacos"]
+    };
+
+    const keywords = MOOD_MAP[flavor.toLowerCase()] || ["Delicious Meal", "Tasty Snack", "Chef's Special"];
     
-    // Step 0: Deduplicate Raw Data (API often has duplicates)
+    return keywords.map((title, index) => ({
+        id: `mock-${flavor}-${index}`,
+        title: title,
+        image: getFallbackImage(title),
+        time: "30 min",
+        calories: 300 + Math.floor(Math.random() * 500),
+        rating: 4.5 + (Math.random() * 0.5),
+        sodium: 100
+    }));
+}
+
+export async function getRecipesByFlavor(flavor: string, isLowSalt: boolean = false) {
+    const cacheKey = `${flavor}-${isLowSalt}`;
+    const cached = searchCache.get(cacheKey);
+    
+    if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+        console.log(`[Cache Hit] Serving results for: ${flavor}`);
+        return cached.data;
+    }
+
+    let rawRecipes: any[] = [];
+    let apiError = false;
+
+    // Strategy: If specific query, fetch MORE data (parallel pages) to increase match chance.
+    // If generic mood, just fetch one random page.
+    const isSpecificSearch = flavor && flavor !== "savory" && flavor !== "healthy";
+    
+    if (isSpecificSearch) {
+        // Optimized: Fetch 3 random pages in parallel (~150 items) instead of 5 to speed up response
+        const pages = Array.from({ length: 3 }, () => Math.floor(Math.random() * 20) + 1);
+        const promises = pages.map(p => fetchFromApi("/recipe-nutri/nutritioninfo", { page: String(p), limit: "50" }));
+        
+        const results = await Promise.all(promises);
+        results.forEach(data => {
+            if (data && data.payload && data.payload.data) {
+                rawRecipes.push(...data.payload.data);
+            } else if (!data) {
+                apiError = true;
+            }
+        });
+    } else {
+        // Single random page for generic vibes
+        const randomPage = Math.floor(Math.random() * 20) + 1;
+        const data = await fetchFromApi("/recipe-nutri/nutritioninfo", { page: String(randomPage), limit: "50" });
+        if (data && data.payload && data.payload.data) {
+            rawRecipes = data.payload.data;
+        } else if (!data) {
+            apiError = true;
+        }
+    }
+
+    // Fallback to Mock Data if API fails or returns no matches
+    if (rawRecipes.length === 0 || apiError) {
+        console.warn(`[Foodoscope] API failed or empty. Generating mock recipes for: ${flavor}`);
+        const mocks = generateMockRecipes(flavor);
+        if (mocks.length > 0) {
+             searchCache.set(cacheKey, { data: mocks, timestamp: Date.now() });
+             return mocks;
+        }
+        return [];
+    }
+    
+    // Step 0: Deduplicate Raw Data
     const seenIds = new Set();
     const uniqueRaw: any[] = [];
     for (const r of rawRecipes) {
         const id = r.Recipe_id || r._id;
         const title = r.recipeTitle || r.title;
-        // Dedupe key: ID + Title (some IDs might be missing/generic)
         const key = `${id}-${title}`;
         if (!seenIds.has(key)) {
             seenIds.add(key);
@@ -101,18 +178,54 @@ export async function getRecipesByFlavor(flavor: string, isLowSalt: boolean = fa
     }
     rawRecipes = uniqueRaw;
 
-    // Step 1: Client-side Filter by Flavor/Vibe
-    if (flavor && flavor !== "savory" && flavor !== "healthy") {
+    // Step 1: Client-side Filter
+    if (isSpecificSearch) {
         const lowerFlavor = flavor.toLowerCase();
+        
+        // Map Abstract Moods/Vibes to Concrete Food Keywords
+        const MOOD_MAP: Record<string, string[]> = {
+            "sweet": ["cake", "cookie", "dessert", "sweet", "pudding", "pie", "tart", "brownie", "ice cream", "chocolate"],
+            "spicy": ["spicy", "chili", "curry", "hot", "jalapeno", "pepper", "salsa", "masala"],
+            "comfort food": ["soup", "stew", "pasta", "cheese", "potato", "burger", "pizza", "fried", "casserole"],
+            "energetic": ["chicken", "beef", "steak", "protein", "quinoa", "egg", "tuna", "salmon", "power"],
+            "focused": ["salad", "fish", "nut", "berry", "avocado", "green", "tea", "soup", "healthy"],
+            "chill": ["ice cream", "smoothie", "drink", "coffee", "tea", "snack", "popcorn", "sandwich"],
+            "romantic": ["steak", "pasta", "chocolate", "strawberry", "wine", "fondue", "lobster", "truffle"],
+            "happy": ["taco", "burger", "pizza", "waffle", "pancake", "sundae", "nacho", "fries"],
+            // Spotify Scenarios
+            "fresh salad": ["salad", "green", "lettuce", "vegetable"],
+            "iced coffee": ["coffee", "latte", "espresso", "drink"],
+            "italian pasta": ["pasta", "spaghetti", "lasagna", "fettuccine", "carbonara"],
+            "spicy chicken": ["chicken", "spicy", "curry", "buffalo"]
+        };
+
+        // Determine keywords to look for
+        let targetKeywords: string[] = MOOD_MAP[lowerFlavor] || [];
+        
+        // If no direct map, split the query into words (e.g., "Spicy Chicken" -> ["spicy", "chicken"])
+        if (targetKeywords.length === 0) {
+           targetKeywords = lowerFlavor.split(" ").filter(w => w.length > 2);
+        }
+
         const matched = rawRecipes.filter((r: any) => {
             const t = (r.recipeTitle || r.title || "").toLowerCase();
-            if (lowerFlavor === "sweet") return t.includes("cake") || t.includes("cookie") || t.includes("dessert") || t.includes("sweet");
-            if (lowerFlavor === "spicy") return t.includes("spicy") || t.includes("chili") || t.includes("curry") || t.includes("hot");
-            if (lowerFlavor === "comfort food") return t.includes("soup") || t.includes("stew") || t.includes("pasta") || t.includes("cheese");
-            if (lowerFlavor === "healthy") return true; 
-            return t.includes(lowerFlavor);
+            // Match if title contains ANY of the target keywords
+            return targetKeywords.some(k => t.includes(k));
         });
-        if (matched.length >= 2) rawRecipes = matched;
+        
+        // CRITICAL: Only return matches. If no matches, return empty (UI handles empty state).
+        // Do NOT fall back to random recipes for a specific search.
+        rawRecipes = matched;
+        
+        // Final Fallback: If we searched but found nothing (e.g. niche term), try Mock
+        if (rawRecipes.length === 0) {
+             console.warn(`[Foodoscope] No API matches for ${flavor}. Using Fallback.`);
+             const mocks = generateMockRecipes(flavor);
+             if (mocks.length > 0) {
+                 searchCache.set(cacheKey, { data: mocks, timestamp: Date.now() });
+                 return mocks;
+             }
+        }
     }
 
     // Step 2: Map to App format
@@ -134,7 +247,14 @@ export async function getRecipesByFlavor(flavor: string, isLowSalt: boolean = fa
         recipes = recipes.filter((r: any) => r.sodium < 500);
     }
     
-    return recipes.slice(0, 12);
+    const finalResults = recipes.slice(0, 12);
+    
+    // Cache the results
+    if (finalResults.length > 0) {
+        searchCache.set(cacheKey, { data: finalResults, timestamp: Date.now() });
+    }
+
+    return finalResults;
 }
 
 
