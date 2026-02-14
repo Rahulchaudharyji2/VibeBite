@@ -8,6 +8,7 @@ interface Song {
     title: string;
     artist: string;
     cover: string;
+    youtubeId?: string;
     previewUrl?: string;
 }
 
@@ -43,7 +44,7 @@ export function VibeProvider({ children }: { children: React.ReactNode }) {
 
     return (
         <VibeContext.Provider value={{ currentVibe, setVibe: setCurrentVibe, gradient, currentSong, setSong: setCurrentSong }}>
-            <div 
+            <div
                 className="min-h-screen transition-all duration-1000 ease-in-out"
                 style={{ background: gradient }}
             >
