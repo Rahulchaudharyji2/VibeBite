@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { searchTracks, getAudioFeatures } from "@/lib/spotify";
+import { searchTracks, getAudioFeatures } from "@/lib/youtube";
 import { getMolecularPairings } from "@/lib/flavordb";
 
 // No hardcoded mocks. We will rely on live search or a generic fallback if API fails completely.
@@ -14,6 +14,7 @@ async function getFallbackTrack() {
                     title: track.title,
                     artist: track.artist,
                     cover: track.albumImage,
+                    youtubeId: track.id,
                     previewUrl: track.previewUrl
                 },
                 vibe: audioFeatures?.mood || "Chill",
@@ -65,6 +66,7 @@ export async function GET(request: Request) {
                     title: track.title,
                     artist: track.artist,
                     cover: track.albumImage || "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=2070&auto=format&fit=crop",
+                    youtubeId: track.id,
                     previewUrl: track.previewUrl
                 },
                 vibe: mood,

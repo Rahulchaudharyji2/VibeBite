@@ -42,7 +42,7 @@ async function fetchFromApi(endpoint: string, params: Record<string, string> = {
 // Helper to get diverse images based on keywords
 function getFallbackImage(title: string) {
     const t = title.toLowerCase();
-    
+
     // Expanded Context Categories
     if (t.includes("soup") || t.includes("stew") || t.includes("chili")) return "https://images.unsplash.com/photo-1547592166-23acbe3a624b";
     if (t.includes("salad") || t.includes("green") || t.includes("bowl")) return "https://images.unsplash.com/photo-1512621776951-a57141f2eefd";
@@ -52,14 +52,14 @@ function getFallbackImage(title: string) {
     // Cake/Dessert Check (Exclude savory items)
     if (t.includes("cake") || t.includes("dessert") || t.includes("chocolate") || t.includes("sweet")) {
         if (!t.includes("falafel") && !t.includes("crab") && !t.includes("fish") && !t.includes("beef") && !t.includes("chicken")) {
-             return "https://images.unsplash.com/photo-1578985545062-69928b1d9587";
+            return "https://images.unsplash.com/photo-1578985545062-69928b1d9587";
         }
     }
     if (t.includes("fish") || t.includes("seafood") || t.includes("shrimp") || t.includes("salmon")) return "https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2";
     if (t.includes("burger") || t.includes("sandwich") || t.includes("wrap")) return "https://images.unsplash.com/photo-1568901346375-23c9450c58cd";
     if (t.includes("pizza") || t.includes("flatbread")) return "https://images.unsplash.com/photo-1513104890138-7c749659a591";
     if (t.includes("breakfast") || t.includes("egg") || t.includes("pancake")) return "https://images.unsplash.com/photo-1533089862017-ec326aa0d533";
-    
+
     // Vastly Expanded Default Rotation
     const defaults = [
         "https://images.unsplash.com/photo-1546069901-ba9599a7e63c", // Salad
@@ -93,7 +93,7 @@ const searchCache = new Map<string, { data: any[], timestamp: number }>();
 export async function getRecipesByFlavor(flavor: string, isLowSalt: boolean = false) {
     const cacheKey = `${flavor}-${isLowSalt}-scientific`;
     const cached = searchCache.get(cacheKey);
-    
+
     if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
         console.log(`[Cache Hit] Serving scientific results for: ${flavor}`);
         return cached.data;
@@ -110,16 +110,15 @@ export async function getRecipesByFlavor(flavor: string, isLowSalt: boolean = fa
     // This is the "Scientific Engine": We feed the molecules into the Recipe Search
     // Randomize the selection of molecules to get diverse results each time
     const shuffled = molecularIngredients.sort(() => 0.5 - Math.random());
-    const searchPromises = shuffled.slice(0, 3).map(ingredient => 
-        fetchFromApi("/recipe-nutri/nutritioninfo", { 
-            "recipeTitle": ingredient, 
-            "limit": "20",
-            "sort": "r" // hypothetical random sort or just rely on ingredient diversity
+    const searchPromises = shuffled.slice(0, 3).map(ingredient =>
+        fetchFromApi("/recipe/recipesinfo", {
+            "Recipe_title": ingredient,
+            "limit": "20"
         })
     );
-    
+
     // Also search for the Vibe/Flavor itself as a backup context
-    searchPromises.push(fetchFromApi("/recipe-nutri/nutritioninfo", { "recipeTitle": flavor, "limit": "20" }));
+    searchPromises.push(fetchFromApi("/recipe/recipesinfo", { "Recipe_title": flavor, "limit": "20" }));
 
     try {
         const results = await Promise.all(searchPromises);
@@ -137,20 +136,27 @@ export async function getRecipesByFlavor(flavor: string, isLowSalt: boolean = fa
     // Fallback: If Scientific/Molecular search fails, try broad keyword search
     if (rawRecipes.length === 0 || apiError) {
         console.log(`[Foodoscope] Scientific search passed/failed. Trying broad search for: ${flavor}`);
-        const broadData = await fetchFromApi("/recipe-nutri/nutritioninfo", { 
-            "recipeTitle": flavor, 
-            "limit": "20" 
+        const broadData = await fetchFromApi("/recipe/recipesinfo", {
+            "Recipe_title": flavor,
+            "limit": "20"
         });
 
         if (broadData && broadData.payload && broadData.payload.data) {
-             rawRecipes = broadData.payload.data;
+            rawRecipes = broadData.payload.data;
         }
     }
 
+    // 🚨 FINAL FALLBACK: If API is dead/rate-limited (429), use Hardcoded Healthy Mock Data
     if (rawRecipes.length === 0) {
-        return [];
+        console.warn("[Foodoscope] No results or API Rate Limited (429). Using Safety Fallback Recipes.");
+        return [
+            { id: "mock-1", title: "Citrus Avocado Salad", image: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd", time: "15 min", calories: 350, rating: 4.8, sodium: 50, scientificMatch: "Fallback" },
+            { id: "mock-2", title: "Grilled Lemon Chicken", image: "https://images.unsplash.com/photo-1598515214211-89d3c73ae83b", time: "25 min", calories: 420, rating: 4.7, sodium: 120, scientificMatch: "Fallback" },
+            { id: "mock-3", title: "Berry Smoothie Bowl", image: "https://images.unsplash.com/photo-1490645935967-10de6ba17061", time: "10 min", calories: 280, rating: 4.9, sodium: 30, scientificMatch: "Fallback" },
+            { id: "mock-4", title: "Quinoa Veggie Mix", image: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c", time: "20 min", calories: 310, rating: 4.6, sodium: 80, scientificMatch: "Fallback" },
+        ];
     }
-    
+
     // Step 2: Deduplicate
     const seenIds = new Set();
     const uniqueRaw: any[] = [];
@@ -172,7 +178,7 @@ export async function getRecipesByFlavor(flavor: string, isLowSalt: boolean = fa
         // Check if title includes any of the molecular ingredients
         return molecularIngredients.some(ingredient => t.includes(ingredient.toLowerCase()));
     });
-    
+
     // If no exact matches found, we might fallback to generic search to show SOMETHING, 
     // but for "Scientific" accuracy, we prioritize matched.
     // If matched is empty, we fall back to the raw list but sort by relevance if possible?
@@ -181,20 +187,20 @@ export async function getRecipesByFlavor(flavor: string, isLowSalt: boolean = fa
 
     // Step 4: Map to App format & Add Scientific Badges
     let recipes = finalPool.map((r: any) => {
-        const title = r.recipeTitle || r.title || "Unknown Recipe";
+        const title = r.Recipe_title || r.title || "Unknown Recipe";
         const tLower = title.toLowerCase();
-        
+
         // Identify which scientific ingredient triggered this result
         const match = molecularIngredients.find(ing => tLower.includes(ing.toLowerCase()));
-        
+
         return {
             id: r.Recipe_id || r._id,
             title: title,
             image: r.img_url || getFallbackImage(title),
-            time: "30 min",
-            calories: Math.round(parseFloat(r["Energy (kcal)"] || 0)),
+            time: r.total_time ? `${r.total_time} min` : "30 min",
+            calories: Math.round(parseFloat(r.Calories || r["Energy (kcal)"] || 0)),
             rating: 4.5,
-            sodium: parseFloat(r["Sodium, Na (mg)"] || 0),
+            sodium: parseFloat(r["Sodium, Na (mg)"] || 0), // Note: RecipesInfo might not have Sodium, but we use what we have
             // Scientific Badge Data
             scientificMatch: match || "General Vibe"
         };
@@ -205,9 +211,9 @@ export async function getRecipesByFlavor(flavor: string, isLowSalt: boolean = fa
     if (isLowSalt) {
         recipes = recipes.filter((r: any) => r.sodium < 100);
     }
-    
+
     const finalResults = recipes.slice(0, 12);
-    
+
     // Cache
     if (finalResults.length > 0) {
         searchCache.set(cacheKey, { data: finalResults, timestamp: Date.now() });
@@ -225,34 +231,41 @@ export async function searchRecipes(query: string, isLowSalt: boolean = false) {
 
 export async function getRecipeById(id: string) {
     console.log(`[Foodoscope] Fetching details for ID: ${id}`);
-    
+
     // Attempt 1: Try filtering by Recipe_id directly
     // Note: The API might ignore unknown params, so we check the result carefully.
-    const data = await fetchFromApi("/recipe-nutri/nutritioninfo", { 
+    const data = await fetchFromApi("/recipe/recipesinfo", {
         "Recipe_id": id,
         "limit": "5" // Fetch a few just in case
     });
 
     if (data && data.payload && data.payload.data) {
         // Find the specific item in the returned list
-        const found = data.payload.data.find((r: any) => 
+        const found = data.payload.data.find((r: any) =>
             String(r.Recipe_id) === String(id) || String(r._id) === String(id)
         );
 
         if (found) {
-             console.log(`[Foodoscope] Found recipe: ${found.recipeTitle}`);
-             const title = found.recipeTitle || found.title || "Unknown Recipe";
-             return {
+            console.log(`[Foodoscope] Found recipe: ${found.Recipe_title}`);
+            const title = found.Recipe_title || found.title || "Unknown Recipe";
+
+            // Allow string parsing for instructions
+            let instructions = found.instructions || found.Processes || "Instructions retrieved from Foodoscope API.";
+            if (found.Processes && found.Processes.includes("||")) {
+                instructions = found.Processes.split("||").join(". ");
+            }
+
+            return {
                 title: title,
                 image: found.img_url || getFallbackImage(title),
-                time: "30 min",
-                calories: Math.round(parseFloat(found["Energy (kcal)"] || 0)),
-                description: found.instructions || "Instructions retrieved from Foodoscope API.",
-                ingredients: found.ingredients ? found.ingredients.split(",") : ["Ingredients not listed in summary."]
+                time: found.total_time ? `${found.total_time} min` : "30 min",
+                calories: Math.round(parseFloat(found.Calories || found["Energy (kcal)"] || 0)),
+                description: instructions,
+                ingredients: found.ingredients ? (Array.isArray(found.ingredients) ? found.ingredients.map((i: any) => i.name || i) : found.ingredients.split(",")) : ["Ingredients not listed in summary."]
             };
         }
     }
-    
+
     console.warn(`[Foodoscope] ID ${id} not found in API search.`);
     return null;
 }

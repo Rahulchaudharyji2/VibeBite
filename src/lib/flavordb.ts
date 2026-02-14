@@ -1,142 +1,86 @@
+const FLAVORDB_API_KEY = process.env.FOODOSCOPE_API_KEY || "";
+const FLAVORDB_BASE_URL = "http://cosylab.iiitd.edu.in:6969/flavordb";
 
-const API_KEY = process.env.FOODOSCOPE_API_KEY || "";
-const BASE_URL = "https://api.foodoscope.com";
-
-// Scientific Molecular Map (Expanded Scientific Lookup)
-// Sources: FlavorDB, PubMed (Nutritional Psychiatry), Food Pairing Theory
-const MOLECULAR_PAIRINGS: Record<string, string[]> = {
-    // --- MOODS (Based on Neurotransmitters & Compounds) ---
-
-    // ⚡ Energetic / Alert (Dopamine & Norepinephrine boosters)
-    // Compounds: Citral, Limonene, Capsaicin, Caffeine
-    "energetic": ["Lemon", "Ginger", "Peppermint", "Rosemary", "Chili", "Grapefruit", "Green Tea", "Dark Chocolate", "Spinach"],
-    "high energy": ["Lemon", "Ginger", "Peppermint", "Rosemary", "Chili", "Grapefruit"],
-
-    // 🧘 Relaxed / Chill (GABA & Serotonin modulation)
-    // Compounds: Linalool, Magnesium, Tryptophan
-    "relaxed": ["Lavender", "Chamomile", "Honey", "Oat", "Cherry", "Banana", "Almond", "Sweet Potato", "Warm Milk"],
-    "chill": ["Lavender", "Chamomile", "Honey", "Oat", "Cherry", "Banana", "Almond", "Sweet Potato"],
-
-    // 😔 Melancholic / Sad (Serotonin & Omega-3 boosters)
-    // Compounds: Omega-3 Fatty Acids, Folate, Selenium
-    "melancholic": ["Salmon", "Walnut", "Dark Chocolate", "Berry", "Spinach", "Avocado", "Turmeric", "Yogurt"],
-    "sad": ["Salmon", "Walnut", "Dark Chocolate", "Berry", "Spinach", "Avocado"],
-
-    // 😫 Stressed / Anxious (Cortisol reduction)
-    // Compounds: Vitamin C, Magnesium, L-Theanine
-    "stressed": ["Orange", "Blueberry", "Avocado", "Almond", "Spinach", "Salmon", "Chamomile", "Asparagus"],
-    "anxious": ["Orange", "Blueberry", "Avocado", "Almond", "Spinach", "Salmon"],
-
-    // 😊 Happy (Endorphin & Serotonin boosters)
-    // Compounds: Phenylethylamine, Vanillin, Curcumin
-    "happy": ["Strawberry", "Vanilla", "Peach", "Coconut", "Mango", "Banana", "Coffee", "Chili"],
-
-    // ❤️ Romantic (Aphrodisiacs / Vasodilators)
-    // Compounds: Capsaicin, Zinc, Phenylethylamine
-    "romantic": ["Strawberry", "Chocolate", "Oyster", "Vanilla", "Chili", "Fig", "Pomegranate", "Red Wine"],
-
-    // 🧠 Focused / Productive (Cognitive enhancers)
-    // Compounds: Flavonoids, Caffeine, Choline
-    "focused": ["Salmon", "Walnut", "Blueberry", "Matcha", "Coffee", "Egg", "Broccoli", "Pumpkin Seed"],
-
-    // --- HEALTH GOALS ---
-
-    // 🥑 Keto (High Fat, Low Carb)
-    "keto": ["Avocado", "Salmon", "Egg", "Butter", "Steak", "Cheese", "Olive Oil", "Cauliflower", "Bacon"],
-
-    // 🌿 Vegan (Plant-based High Protein)
-    "vegan": ["Tofu", "Lentil", "Chickpea", "Quinoa", "Spinach", "Mushrooms", "Almond", "Seitan", "Tempeh"],
-
-    // 🥦 Low Calorie / Weight Loss (High Fiber, High Volume)
-    "low calorie": ["Cucumber", "Celery", "Watermelon", "Zucchini", "Leafy Greens", "Grapefruit", "Berries"],
-
-    // 💪 High Protein (Muscle Building)
-    "high protein": ["Chicken Breast", "Tuna", "Greek Yogurt", "Egg White", "Turkey", "Cottage Cheese", "Lean Beef"],
-
-    // 🌾 Gluten Free
-    "gluten free": ["Rice", "Quinoa", "Potato", "Corn", "Buckwheat", "Almond Flour", "Coconut Flour"],
-
-    // --- CONTEXTUAL ---
-    "party": ["Pizza", "Nachos", "Wings", "Chips", "Beer", "Soda", "Tacos"],
-    "comfort": ["Mac and Cheese", "Soup", "Stew", "Mashed Potato", "Pie", "Pasta"],
-    "breakfast": ["Pancake", "Egg", "Oatmeal", "Toast", "Bacon", "Waffle", "Smoothie"],
-
-    // --- TASTE PROFILES (For direct queries like "Spicy") ---
-    "spicy": ["Chili", "Jalapeno", "Cayenne", "Paprika", "Garlic", "Sriracha", "Pepper", "Cumin", "Curry"],
-    "sweet": ["Sugar", "Honey", "Maple Syrup", "Vanilla", "Berry", "Chocolate", "Caramel"],
-    "salty": ["Sea Salt", "Soy Sauce", "Cheese", "Olive", "Bacon", "Capers", "Anchovy"],
-    "bitter": ["Coffee", "Dark Chocolate", "Kale", "Arugula", "Grapefruit", "Turmeric"],
-    "sour": ["Lemon", "Lime", "Vinegar", "Yogurt", "Pickle", "Tamarind"]
-};
-
-// Map abstract moods to concrete ingredients that FlavorDB understands
-const MOOD_TO_INGREDIENT_MAP: Record<string, string> = {
-    "chill": "Mint",
-    "relaxed": "Chamomile",
-    "energetic": "Lemon",
-    "happy": "Vanilla",
-    "romantic": "Strawberry",
-    "melancholic": "Dark Chocolate",
-    "stressed": "Orange",
-    "focused": "Coffee"
-};
-
-export async function getMolecularPairings(flavor: string): Promise<string[]> {
-    const lowerFlavor = flavor.toLowerCase();
-
-    // Map abstract mood to a concrete ingredient for the API query
-    // e.g. "Chill" -> "Mint" (which allows FlavorDB to return "Mint" pairings like Chocolate, Lime)
-    const apiQueryIngredient = MOOD_TO_INGREDIENT_MAP[lowerFlavor] || lowerFlavor;
-
-    // 1. Try Real API (Scientific Flavor Analysis)
+/**
+ * Step 1: The AI Translation Bridge
+ * Dynamically translates an abstract mood ("chill") into a concrete ingredient ("chamomile").
+ * This eliminates the need for hardcoded dictionaries.
+ */
+async function translateMoodToIngredient(mood: string): Promise<string> {
     try {
-        const url = `${BASE_URL}/ingredients/flavor/${apiQueryIngredient}`;
-        console.log(`[FlavorDB] Fetching molecular matches for: ${lowerFlavor} (Mapped to: ${apiQueryIngredient})`);
+        // You will need to create a simple Next.js API route (/api/translate-mood) 
+        // that prompts an LLM: "Reply with ONLY a single raw food ingredient that represents the mood '{mood}'."
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/translate-mood`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mood })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            console.log(`[AI Bridge] Translated mood '${mood}' -> ingredient '${data.ingredient}'`);
+            return data.ingredient.toLowerCase();
+        }
+    } catch (error) {
+        console.error("[AI Bridge] Translation failed:", error);
+    }
+    
+    // Absolute fallback if your AI translation route is down, 
+    // ensuring the app doesn't crash.
+    return mood.toLowerCase(); 
+}
+
+/**
+ * Step 2: The Live FlavorDB Fetch
+ * Takes the dynamically generated ingredient and fetches its molecular pairings.
+ */
+export async function getMolecularPairings(flavorOrMood: string): Promise<string[]> {
+    // 1. Get the dynamic ingredient translation
+    const apiQueryIngredient = await translateMoodToIngredient(flavorOrMood);
+
+    // 2. Fetch exclusively from the Live FlavorDB API
+    try {
+        const url = `${FLAVORDB_BASE_URL}/food/by-alias?food_pair=${encodeURIComponent(apiQueryIngredient)}`;
+        console.log(`[FlavorDB] Fetching live pairings for API query: ${apiQueryIngredient}`);
 
         const res = await fetch(url, {
             headers: {
-                'Authorization': `Bearer ${API_KEY}`,
-                'Accept': 'application/json'
+                'Authorization': `Bearer ${FLAVORDB_API_KEY}`,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
             },
-            next: { revalidate: 3600 } // Cache for 1 hour
+            next: { revalidate: 3600 } 
         });
 
-        if (res.ok) {
-            const data = await res.json();
-            // Assuming API returns { ingredients: ["Citral", ...] } or similar
-            // Adjust based on actual response structure if needed
-            if (data.ingredients && Array.isArray(data.ingredients)) {
-                console.log(`[FlavorDB] Found: ${data.ingredients.join(", ")}`);
-                return data.ingredients;
-            }
+        if (!res.ok) {
+            console.error(`[FlavorDB] Live API Error: ${res.status}`);
+            return [apiQueryIngredient]; 
+        }
+
+        const data = await res.json();
+        let parsedIngredients: string[] = [];
+
+        // 🚨 THE FIX: Parse the exact structure revealed by our debug script
+        if (data && Array.isArray(data.topSimilarEntities)) {
+            // Map over the array and extract the 'entityName' string
+            parsedIngredients = data.topSimilarEntities.map((item: any) => item.entityName);
+        } else if (Array.isArray(data)) {
+            // Safe fallback just in case their API shape changes later
+            parsedIngredients = data.map((item: any) => item.entityName || typeof item === 'string' ? item : null);
+        }
+
+        // Clean up the array (remove undefined/nulls and empty strings)
+        parsedIngredients = parsedIngredients.filter(i => typeof i === 'string' && i.length > 0);
+
+        if (parsedIngredients.length > 0) {
+            console.log(`[FlavorDB] Matches Found: ${parsedIngredients.slice(0, 5).join(", ")}...`);
+            return parsedIngredients;
         } else {
-            // 404 is expected for complex dishes or if API is down.
-            // We use a local molecular database as a robust fallback, so this is NOT an error.
-            console.log(`[FlavorDB] No direct API match for '${apiQueryIngredient}'. Using internal molecular database.`);
+            console.warn(`[FlavorDB] API returned empty pairings for '${apiQueryIngredient}'.`);
+            return [apiQueryIngredient];
         }
     } catch (e) {
-        console.warn("FlavorDB API failed, switching to Local Molecular Database.", e);
+        console.error(`[FlavorDB] Live API connection failed:`, e);
+        return [apiQueryIngredient];
     }
-
-    // 2. Scientific Fallback (Local)
-    // Return molecular matches if specific mood/goal is found
-    if (MOLECULAR_PAIRINGS[lowerFlavor]) {
-        return MOLECULAR_PAIRINGS[lowerFlavor];
-    }
-
-    // 3. Composite/Smart Splitting (e.g. "Keto Vegan" -> Merge sets)
-    const compounds: string[] = [];
-    const parts = lowerFlavor.split(/[ ,]+/);
-    for (const part of parts) {
-        if (MOLECULAR_PAIRINGS[part]) {
-            compounds.push(...MOLECULAR_PAIRINGS[part]);
-        }
-    }
-
-    if (compounds.length > 0) {
-        return Array.from(new Set(compounds));
-    }
-
-    // 4. Default: Return original to let standard search handle it
-    return [flavor];
 }

@@ -68,7 +68,7 @@ export default function MoodPage() {
                         className="glass-card p-10 rounded-[2.5rem] h-full flex flex-col justify-between border-green-500/20 hover:border-green-500/50 transition-all hover:bg-green-500/5"
                     >
                         <div>
-                            <h2 className="text-3xl font-bold mb-4 flex items-center gap-2"><div className="w-8 h-8 rounded-full bg-[#1DB954] flex items-center justify-center text-black"><Music size={18} /></div> Spotify Vibe</h2>
+                            <h2 className="text-3xl font-bold mb-4 flex items-center gap-2"><div className="w-8 h-8 rounded-full bg-[#1DB954] flex items-center justify-center text-black"><Music size={18} /></div> YT-music Vibe</h2>
                             <p className="text-gray-400 mb-6 text-lg leading-relaxed">Enter a song you're listening to, and we'll match the food to its beat.</p>
 
                             <div className="relative">
