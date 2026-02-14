@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Pause, SkipForward, SkipBack, Maximize2, Minimize2, Music2 } from "lucide-react";
+import { Play, Pause, SkipForward, SkipBack, Maximize2, Minimize2, Music2, ChevronDown } from "lucide-react";
 import { useVibe, Vibe } from "@/lib/vibe-context";
 import YouTube, { YouTubeProps } from 'react-youtube';
 
@@ -174,6 +174,17 @@ export default function MusicPlayer() {
 
             <div className={`container mx-auto px-4 h-full flex ${isExpanded ? 'flex-col pt-8' : 'items-center justify-between'}`}>
 
+                {/* Expanded Header (Collapse Button) */}
+                {isExpanded && (
+                    <div className="w-full flex justify-between items-center mb-6">
+                        <button onClick={() => setIsExpanded(false)} className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition">
+                            <ChevronDown size={24} />
+                        </button>
+                        <span className="text-xs font-mono text-gray-400">NOW PLAYING</span>
+                        <div className="w-10"></div> {/* Spacer for centering */}
+                    </div>
+                )}
+
                 {/* Track Info */}
                 <div className="flex items-center gap-4">
                     <motion.img
@@ -184,7 +195,7 @@ export default function MusicPlayer() {
                         transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
                     />
                     {!isExpanded && (
-                        <div>
+                        <div onClick={() => setIsExpanded(true)} className="cursor-pointer">
                             <h4 className="font-bold text-sm w-48 truncate">{activeTrack.title}</h4>
                             <p className="text-xs text-gray-400 truncate">{activeTrack.artist}</p>
                         </div>
@@ -202,7 +213,7 @@ export default function MusicPlayer() {
                 )}
 
                 {/* Controls */}
-                <div className="flex items-center gap-6 justify-center">
+                <div className="flex items-center gap-6 justify-center pb-8 md:pb-0">
                     <button onClick={handlePrev} className="hover:text-white/70 transition"><SkipBack size={24} /></button>
                     <button
                         onClick={togglePlay}
@@ -213,7 +224,7 @@ export default function MusicPlayer() {
                     <button onClick={handleNext} className="hover:text-white/70 transition"><SkipForward size={24} /></button>
                 </div>
 
-                {/* Expand Toggle */}
+                {/* Expand Toggle (Desktop only) */}
                 <div className="hidden md:flex items-center gap-4">
                     <span className="text-xs text-gray-500 font-mono">
                         {activeTrack.youtubeId ? "YOUTUBE PLAYER" : "SIMULATED PLAYER"}
