@@ -32,7 +32,14 @@ export async function GET(request: Request) {
             searchQuery = searchQuery ? `${searchQuery} ${goalList.join(" ")}` : goalList.join(" ");
         }
 
-        if (searchQuery) {
+        if (mood) {
+            // Prioritize Vibe/Mood Analysis
+            // We pass the raw mood (e.g., "energetic") to trigger molecular matching.
+            console.log(`[API] Searching by Mood: ${mood}`);
+            recipes = await getRecipesByFlavor(mood, isLowSalt);
+        } else if (searchQuery) {
+            // Fallback to text search if no mood is present (e.g. manual search "Pasta")
+            console.log(`[API] Searching by Query: ${searchQuery}`);
             recipes = await searchRecipes(searchQuery, isLowSalt);
         } else if (flavor) {
             recipes = await getRecipesByFlavor(flavor, isLowSalt);

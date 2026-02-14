@@ -68,7 +68,7 @@ export default function MoodPage() {
                         className="glass-card p-10 rounded-[2.5rem] h-full flex flex-col justify-between border-green-500/20 hover:border-green-500/50 transition-all hover:bg-green-500/5"
                     >
                         <div>
-                            <h2 className="text-3xl font-bold mb-4 flex items-center gap-2"><div className="w-8 h-8 rounded-full bg-[#1DB954] flex items-center justify-center text-black"><Music size={18} /></div> YT-music Vibe</h2>
+                            <h2 className="text-3xl font-bold mb-4 flex items-center gap-2"><div className="w-8 h-8 rounded-full bg-[#FF0000] flex items-center justify-center text-white"><Music size={18} /></div> YT-music Vibe</h2>
                             <p className="text-gray-400 mb-6 text-lg leading-relaxed">Enter a song you're listening to, and we'll match the food to its beat.</p>
 
                             <div className="relative">
@@ -81,7 +81,7 @@ export default function MoodPage() {
                                             const val = e.currentTarget.value;
                                             if (val) {
                                                 setIsConnecting(true);
-                                                router.push(`/recipe/results?source=spotify&query=${encodeURIComponent(val)}`);
+                                                router.push(`/recipe/results?source=youtube&query=${encodeURIComponent(val)}`);
                                             }
                                         }
                                     }}
@@ -96,11 +96,11 @@ export default function MoodPage() {
                                 const val = input?.value;
                                 if (val) {
                                     setIsConnecting(true);
-                                    router.push(`/recipe/results?source=spotify&query=${encodeURIComponent(val)}`);
+                                    router.push(`/recipe/results?source=youtube&query=${encodeURIComponent(val)}`);
                                 }
                             }}
                             disabled={isConnecting}
-                            className="mt-6 w-full py-5 bg-[#1DB954] hover:bg-[#1ed760] text-black font-bold rounded-2xl flex items-center justify-center gap-3 transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-lg shadow-[0_0_30px_rgba(29,185,84,0.3)] hover:shadow-[0_0_50px_rgba(29,185,84,0.5)]"
+                            className="mt-6 w-full py-5 bg-[#FF0000] hover:bg-[#ff1a1a] text-white font-bold rounded-2xl flex items-center justify-center gap-3 transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-lg shadow-[0_0_30px_rgba(255,0,0,0.3)] hover:shadow-[0_0_50px_rgba(255,0,0,0.5)]"
                         >
                             {isConnecting ? <Loader2 className="animate-spin" /> : <Music size={24} />}
                             {isConnecting ? "Analyzing..." : "Analyze Song"}

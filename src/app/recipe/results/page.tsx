@@ -15,7 +15,7 @@ import { Suspense } from "react";
 function SearchResultsContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
-    const { currentVibe, setSong } = useVibe(); // Added setSong
+    const { currentVibe, setVibe, setSong } = useVibe(); // Added setSong
 
     // URL Params (Initial Load)
     const urlMood = searchParams.get("mood");
@@ -55,12 +55,36 @@ function SearchResultsContent() {
                         setCurrentSong(vibeData.song); // Local state for immediate UI
                         setScientificData(vibeData.scientific_analysis); // Store analysis data
                         if (setSong) setSong(vibeData.song); // Global context for MusicPlayer
+                        if (setVibe) setVibe(vibeData.vibe.toLowerCase()); // Sync Global Vibe
 
-                        // Only use URL query if context is neutral (initial load)
-                        if (currentVibe === "neutral") {
-                            apiQuery = vibeData.query;
-                            setDisplayTitle(`Based on "${vibeData.song.title}"`);
-                        }
+                        // FORCE Override: Use the API's curated query (e.g. "Energetic Food") 
+                        // instead of the song title (e.g. "Shape of You")
+                        apiQuery = vibeData.query;
+                        apiMood = vibeData.vibe.toLowerCase();
+
+                        setDisplayTitle(`Based on "${vibeData.song.title}"`);
+                    }
+                }
+                // Handle YouTube Source
+                else if (source === "youtube") {
+                    let apiUrl = "/api/youtube/current-vibe";
+                    if (query) {
+                        apiUrl += `?q=${encodeURIComponent(query)}`;
+                    }
+
+                    const vibeRes = await fetch(apiUrl);
+                    const vibeData = await vibeRes.json();
+
+                    if (vibeData) {
+                        setCurrentSong(vibeData.song);
+                        setScientificData(vibeData.scientific_analysis);
+                        if (setSong) setSong(vibeData.song);
+                        if (setVibe) setVibe(vibeData.vibe.toLowerCase());
+
+                        apiQuery = vibeData.query;
+                        apiMood = vibeData.vibe.toLowerCase();
+
+                        setDisplayTitle(`Based on "${vibeData.song.title}"`);
                     }
                 }
 
@@ -93,7 +117,7 @@ function SearchResultsContent() {
         }
 
         fetchData();
-    }, [activeMood, goals, query, source, currentVibe, setSong]); // Added setSong dependency
+    }, [activeMood, goals, query, source, currentVibe, setSong, setVibe]); // Added setSong dependency
 
     const [scientificData, setScientificData] = useState<any>(null); // State for analysis
 
@@ -108,19 +132,19 @@ function SearchResultsContent() {
                         <h1 className="text-3xl font-bold font-display text-white drop-shadow-lg">{displayTitle}</h1>
                     </div>
 
-                    {/* Spotify Now Playing & Scientific Analysis */}
-                    {source === "spotify" && currentSong && (
+                    {/* Spotify/YouTube Now Playing & Scientific Analysis */}
+                    {(source === "spotify" || source === "youtube") && currentSong && (
                         <div className="grid md:grid-cols-2 gap-6">
                             {/* Now Playing Card */}
                             <motion.div
                                 initial={{ opacity: 0, x: -20 }}
                                 animate={{ opacity: 1, x: 0 }}
-                                className="glass-card p-4 rounded-2xl flex items-center gap-4 border-[#1DB954]/30 bg-black/40"
+                                className={`glass-card p-4 rounded-2xl flex items-center gap-4 ${source === 'youtube' ? 'border-red-500/30' : 'border-[#1DB954]/30'} bg-black/40`}
                             >
                                 {currentSong.cover && <img src={currentSong.cover} alt={currentSong.title} className="w-20 h-20 rounded-xl shadow-lg animate-spin-slow" />}
                                 <div>
-                                    <div className="text-xs text-[#1DB954] font-bold uppercase tracking-wider mb-1 flex items-center gap-2">
-                                        <span className="w-2 h-2 bg-[#1DB954] rounded-full animate-pulse" /> Now Playing
+                                    <div className={`text-xs ${source === 'youtube' ? 'text-red-500' : 'text-[#1DB954]'} font-bold uppercase tracking-wider mb-1 flex items-center gap-2`}>
+                                        <span className={`w-2 h-2 ${source === 'youtube' ? 'bg-red-500' : 'bg-[#1DB954]'} rounded-full animate-pulse`} /> Now Playing
                                     </div>
                                     <div className="font-bold text-xl leading-tight text-white">{currentSong.title}</div>
                                     <div className="text-sm text-gray-400">{currentSong.artist}</div>
@@ -141,19 +165,23 @@ function SearchResultsContent() {
                                 <div className="grid grid-cols-3 gap-2 text-center">
                                     <div className="bg-black/20 rounded-lg p-2">
                                         <div className="text-xs text-gray-400">BPM</div>
-                                        <div className="font-mono text-lg font-bold text-white">120</div>
+                                        <div className="font-mono text-lg font-bold text-white">{scientificData?.bpm || "N/A"}</div>
                                     </div>
                                     <div className="bg-black/20 rounded-lg p-2">
                                         <div className="text-xs text-gray-400">Energy</div>
-                                        <div className="font-mono text-lg font-bold text-[#C6FF33]">High</div>
+                                        <div className="font-mono text-lg font-bold text-[#C6FF33]">
+                                            {scientificData?.energy > 0.8 ? "High" : scientificData?.energy > 0.5 ? "Med" : "Low"}
+                                        </div>
                                     </div>
                                     <div className="bg-black/20 rounded-lg p-2">
                                         <div className="text-xs text-gray-400">Detected</div>
-                                        <div className="font-mono text-lg font-bold text-purple-300">Energetic</div>
+                                        <div className="font-mono text-lg font-bold text-purple-300 truncate">
+                                            {scientificData?.trigger?.split('(')[0].trim() || activeMood || "Vibe"}
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="mt-3 text-xs text-gray-400 text-center border-t border-white/5 pt-2">
-                                    Matched <span className="text-white font-bold">Lemon & Ginger</span> compounds
+                                    Matched <span className="text-white font-bold">{scientificData?.compounds?.join(", ") || "compounds"}</span>
                                 </div>
                             </motion.div>
                         </div>
@@ -213,6 +241,11 @@ function SearchResultsContent() {
                                             }}
                                             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                                         />
+                                        {/* Status Badges */}
+                                        <div className="absolute top-4 left-4 flex flex-col gap-1 items-start z-10">
+                                            {recipe.diet?.vegan && <span className="px-2 py-0.5 bg-green-500/90 text-white text-[10px] font-bold rounded-full shadow-lg backdrop-blur-md font-mono">VEGAN</span>}
+                                            {recipe.macros?.protein > 20 && <span className="px-2 py-0.5 bg-blue-500/90 text-white text-[10px] font-bold rounded-full shadow-lg backdrop-blur-md font-mono">HIGH PROTEIN</span>}
+                                        </div>
                                         {recipe.rating && (
                                             <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full flex items-center gap-1 text-xs font-semibold text-yellow-400">
                                                 <Star size={12} fill="currentColor" /> {recipe.rating}
