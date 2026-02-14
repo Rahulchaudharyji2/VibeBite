@@ -1,6 +1,6 @@
 "use client";
 
-import { useSession, signOut } from "next-auth/react";
+import { useUser, useClerk } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { motion } from "framer-motion";
@@ -8,14 +8,11 @@ import { LogOut, Music, Activity, Search, User } from "lucide-react";
 import Link from "next/link";
 
 export default function Dashboard() {
-  const { data: session, status } = useSession();
+  const { user, isLoaded } = useUser();
+  const { signOut } = useClerk();
   const router = useRouter();
 
-  useEffect(() => {
-    if (status === "unauthenticated") {
-      router.push("/");
-    }
-  }, [status, router]);
+  if (!isLoaded) return null;
 
   const container = {
     hidden: { opacity: 0 },
@@ -40,24 +37,24 @@ export default function Dashboard() {
           Vibe<span className="text-[var(--color-creamy-gold)]">Bite</span>
         </h1>
         <div className="flex items-center gap-6">
-          <Link 
+          <Link
             href="/"
             className="flex items-center gap-2 px-4 py-2 rounded-full glass-card hover:bg-white/10 transition-colors text-sm font-medium text-gray-300"
           >
             ← Back
           </Link>
           <div className="flex items-center gap-3 glass-card px-4 py-2 rounded-full">
-            {session?.user?.image ? (
-              <img src={session.user.image} alt="Profile" className="w-8 h-8 rounded-full border border-white/20" />
+            {user?.imageUrl ? (
+              <img src={user.imageUrl} alt="Profile" className="w-8 h-8 rounded-full border border-white/20" />
             ) : (
-               <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-                 <User size={16}/>
-               </div>
+              <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+                <User size={16} />
+              </div>
             )}
-            <span className="font-medium text-sm hidden sm:block">{session?.user?.name}</span>
+            <span className="font-medium text-sm hidden sm:block">{user?.fullName}</span>
           </div>
-          <button 
-            onClick={() => signOut()}
+          <button
+            onClick={() => signOut({ redirectUrl: '/' })}
             className="p-3 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white"
             title="Sign Out"
           >
@@ -75,7 +72,7 @@ export default function Dashboard() {
           <p className="text-xl text-gray-400">Choose your path to the perfect meal.</p>
         </div>
 
-        <motion.div 
+        <motion.div
           variants={container}
           initial="hidden"
           animate="show"

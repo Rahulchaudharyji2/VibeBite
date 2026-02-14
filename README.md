@@ -41,7 +41,7 @@ VibeBite isn't just a wrapper around an API. It uses a 3-layer intelligence syst
 
 We map abstract feelings to concrete food queries.
 
-- **Input**: "The Weeknd - Starboy" (High Tempo / Minor Key)
+- **Input**: "The Weeknd - " (High Tempo / Minor Key)
 - **Logic**: `High BPM` + `Minor Key` = **Spicy / Late Night Food**
 - **Output**: Search Query "Spicy Wings"
 

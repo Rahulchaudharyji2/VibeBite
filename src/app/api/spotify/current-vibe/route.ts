@@ -1,18 +1,48 @@
 import { NextResponse } from "next/server";
 import { searchTracks, getAudioFeatures } from "@/lib/spotify";
+import { getMolecularPairings } from "@/lib/flavordb";
 
-const MOCK_SCENARIOS = [
-    {
+// No hardcoded mocks. We will rely on live search or a generic fallback if API fails completely.
+async function getFallbackTrack() {
+    // Fallback: Use a generic search if no query provided
+    try {
+        const track = await searchTracks("Vibe"); // Generic search
+        if (track) {
+            const audioFeatures = await getAudioFeatures(track.id);
+            return {
+                song: {
+                    title: track.title,
+                    artist: track.artist,
+                    cover: track.albumImage,
+                    previewUrl: track.previewUrl
+                },
+                vibe: audioFeatures?.mood || "Chill",
+                query: "Comfort Food", // Generic fallback
+                scientific_analysis: {
+                    bpm: audioFeatures?.bpm || 100,
+                    energy: audioFeatures?.energy || 0.5,
+                    valence: audioFeatures?.valence || 0.5,
+                    trigger: "Fallback Vibe"
+                }
+            };
+        }
+    } catch (e) {
+        console.error("Fallback search failed:", e);
+    }
+
+    // Absolute last resort if everything fails (API down, etc.)
+    return {
         song: {
-            title: "Starboy",
-            artist: "The Weeknd",
-            cover: "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=2670&auto=format&fit=crop" // Cyberpunk/Neon Vibe
+            title: "Unknown Track",
+            artist: "Unknown Artist",
+            cover: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=2070&auto=format&fit=crop", // Fallback image
+            previewUrl: ""
         },
-        vibe: "Energetic",
-        query: "Spicy Chicken"
-    },
-    // ... (Keep mocks as fallback)
-];
+        vibe: "Chill",
+        query: "Comfort Food",
+        scientific_analysis: { bpm: 0, energy: 0, valence: 0, trigger: "System Error" }
+    };
+}
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
@@ -21,12 +51,15 @@ export async function GET(request: Request) {
     if (query) {
         // Step 1: Search Track
         const track = await searchTracks(query);
-        
+
         if (track) {
             // Step 2: Get Audio Features (Scientific Mood)
             const audioFeatures = await getAudioFeatures(track.id);
             const mood = audioFeatures?.mood || "Chill"; // Default fallback if features fail
-            
+
+            // Step 3: Get Molecular Compounds for this mood
+            const compounds = await getMolecularPairings(mood);
+
             return NextResponse.json({
                 song: {
                     title: track.title,
@@ -41,13 +74,14 @@ export async function GET(request: Request) {
                     bpm: audioFeatures?.bpm,
                     energy: audioFeatures?.energy,
                     valence: audioFeatures?.valence,
-                    trigger: `${mood} (BPM: ${audioFeatures?.bpm})`
+                    trigger: `${mood} (BPM: ${audioFeatures?.bpm})`,
+                    compounds: compounds.slice(0, 3) // Top 3 compounds
                 }
             });
         }
     }
 
     // Default to mock if no query or search fails
-    const scenario = MOCK_SCENARIOS[Math.floor(Math.random() * MOCK_SCENARIOS.length)];
-    return NextResponse.json(scenario);
+    // Default to dynamic fallback if no query or search fails
+    return NextResponse.json(await getFallbackTrack());
 }
