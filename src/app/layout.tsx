@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Montserrat } from "next/font/google"; // Import Inter and Montserrat
+import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 const inter = Inter({
@@ -17,7 +18,6 @@ export const metadata: Metadata = {
   description: "Discover food that matches your mood.",
 };
 
-import { AuthProvider } from "@/components/providers";
 import { VibeProvider } from "@/lib/vibe-context";
 import MusicPlayer from "@/components/MusicPlayer";
 
@@ -27,15 +27,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${inter.variable} ${montserrat.variable} antialiased bg-background text-foreground`}>
-        <AuthProvider>
-            <VibeProvider>
-                {children}
-                <MusicPlayer />
-            </VibeProvider>
-        </AuthProvider>
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en">
+        <body className={`${inter.variable} ${montserrat.variable} antialiased bg-background text-foreground`}>
+          <VibeProvider>
+            {children}
+            <MusicPlayer />
+          </VibeProvider>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

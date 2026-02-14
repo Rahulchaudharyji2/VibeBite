@@ -16,7 +16,7 @@ const MOLECULAR_PAIRINGS: Record<string, string[]> = {
     // Compounds: Linalool, Magnesium, Tryptophan
     "relaxed": ["Lavender", "Chamomile", "Honey", "Oat", "Cherry", "Banana", "Almond", "Sweet Potato", "Warm Milk"],
     "chill": ["Lavender", "Chamomile", "Honey", "Oat", "Cherry", "Banana", "Almond", "Sweet Potato"],
-    
+
     // 😔 Melancholic / Sad (Serotonin & Omega-3 boosters)
     // Compounds: Omega-3 Fatty Acids, Folate, Selenium
     "melancholic": ["Salmon", "Walnut", "Dark Chocolate", "Berry", "Spinach", "Avocado", "Turmeric", "Yogurt"],
@@ -30,7 +30,7 @@ const MOLECULAR_PAIRINGS: Record<string, string[]> = {
     // 😊 Happy (Endorphin & Serotonin boosters)
     // Compounds: Phenylethylamine, Vanillin, Curcumin
     "happy": ["Strawberry", "Vanilla", "Peach", "Coconut", "Mango", "Banana", "Coffee", "Chili"],
-    
+
     // ❤️ Romantic (Aphrodisiacs / Vasodilators)
     // Compounds: Capsaicin, Zinc, Phenylethylamine
     "romantic": ["Strawberry", "Chocolate", "Oyster", "Vanilla", "Chili", "Fig", "Pomegranate", "Red Wine"],
@@ -69,16 +69,32 @@ const MOLECULAR_PAIRINGS: Record<string, string[]> = {
     "sour": ["Lemon", "Lime", "Vinegar", "Yogurt", "Pickle", "Tamarind"]
 };
 
+// Map abstract moods to concrete ingredients that FlavorDB understands
+const MOOD_TO_INGREDIENT_MAP: Record<string, string> = {
+    "chill": "Mint",
+    "relaxed": "Chamomile",
+    "energetic": "Lemon",
+    "happy": "Vanilla",
+    "romantic": "Strawberry",
+    "melancholic": "Dark Chocolate",
+    "stressed": "Orange",
+    "focused": "Coffee"
+};
+
 export async function getMolecularPairings(flavor: string): Promise<string[]> {
     const lowerFlavor = flavor.toLowerCase();
-    
+
+    // Map abstract mood to a concrete ingredient for the API query
+    // e.g. "Chill" -> "Mint" (which allows FlavorDB to return "Mint" pairings like Chocolate, Lime)
+    const apiQueryIngredient = MOOD_TO_INGREDIENT_MAP[lowerFlavor] || lowerFlavor;
+
     // 1. Try Real API (Scientific Flavor Analysis)
     try {
-        const url = `${BASE_URL}/ingredients/flavor/${lowerFlavor}`;
-        console.log(`[FlavorDB] Fetching molecular matches for: ${lowerFlavor}`);
-        
-        const res = await fetch(url, { 
-            headers: { 
+        const url = `${BASE_URL}/ingredients/flavor/${apiQueryIngredient}`;
+        console.log(`[FlavorDB] Fetching molecular matches for: ${lowerFlavor} (Mapped to: ${apiQueryIngredient})`);
+
+        const res = await fetch(url, {
+            headers: {
                 'Authorization': `Bearer ${API_KEY}`,
                 'Accept': 'application/json'
             },
@@ -90,11 +106,13 @@ export async function getMolecularPairings(flavor: string): Promise<string[]> {
             // Assuming API returns { ingredients: ["Citral", ...] } or similar
             // Adjust based on actual response structure if needed
             if (data.ingredients && Array.isArray(data.ingredients)) {
-                 console.log(`[FlavorDB] Found: ${data.ingredients.join(", ")}`);
-                 return data.ingredients;
+                console.log(`[FlavorDB] Found: ${data.ingredients.join(", ")}`);
+                return data.ingredients;
             }
         } else {
-            console.warn(`[FlavorDB] API Error: ${res.status} ${res.statusText}`);
+            // 404 is expected for complex dishes or if API is down.
+            // We use a local molecular database as a robust fallback, so this is NOT an error.
+            console.log(`[FlavorDB] No direct API match for '${apiQueryIngredient}'. Using internal molecular database.`);
         }
     } catch (e) {
         console.warn("FlavorDB API failed, switching to Local Molecular Database.", e);
@@ -105,7 +123,7 @@ export async function getMolecularPairings(flavor: string): Promise<string[]> {
     if (MOLECULAR_PAIRINGS[lowerFlavor]) {
         return MOLECULAR_PAIRINGS[lowerFlavor];
     }
-    
+
     // 3. Composite/Smart Splitting (e.g. "Keto Vegan" -> Merge sets)
     const compounds: string[] = [];
     const parts = lowerFlavor.split(/[ ,]+/);
@@ -114,11 +132,11 @@ export async function getMolecularPairings(flavor: string): Promise<string[]> {
             compounds.push(...MOLECULAR_PAIRINGS[part]);
         }
     }
-    
+
     if (compounds.length > 0) {
         return Array.from(new Set(compounds));
     }
 
     // 4. Default: Return original to let standard search handle it
-    return [flavor]; 
+    return [flavor];
 }
