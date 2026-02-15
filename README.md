@@ -1,114 +1,146 @@
-# 🍽️ VibeBite
+# VibeBite 🍽️✨
 
-**Match Your Mood To Your Meal.**  
-The first context-aware recipe discovery engine that uses "Vibe Mapping" to find you the perfect food.
+**VibeBite** is an AI-powered culinary research engine that bridges the gap between _human emotion_ and _molecular gastronomy_. By synthesizing **Generative AI (Gemini 2.5)** with scientific flavor databases (**FlavorDB**), VibeBite translates abstract moods into scientifically validated recipe recommendations.
 
-![VibeBite Hero](https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=2670&auto=format&fit=crop)
-
-## 🚀 The Problem
-
-"What should I eat?" is the hardest question of the day.
-Traditional recipe apps are just databases—they don't care how you _feel_ or what you're doing. VibeBite bridges the gap between your **Context** (Music, Mood, Health) and **Food**.
-
-## ✨ Key Features
-
-### 🎵 Spotify Sync (Mood Mode)
-
-Connect your vibe. We analyze specific moods to recommend biologically relevant food.
-
-- **Sad?** -> Comfort Food (Chocolate, Warm Soups).
-- **Pumped?** -> High-Energy Protein (Spicy Chicken, Stir Fry).
-- **Focused?** -> Brain Food (Nuts, Omega-3s).
-
-### ❤️ Health Guard
-
-Strict dietary filters that actually work.
-
-- **Low Sodium**: Automatically filters sodium < 500mg.
-- **Protein Packed**: Prioritizes macros for gym-goers.
-
-### 🧠 Smart Context Search
-
-Type what you crave ("Crunchy movie snack"), and our semantic interaction understands the intent.
+![VibeBite Hero](https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=1200&q=80)
+_(Note: Replace with actual screenshot)_
 
 ---
 
-## 🛠️ How It Works (The Core Logic)
+## 🧠 Core Intelligence: The RAG & Gen AI Pipeline
 
-VibeBite isn't just a wrapper around an API. It uses a 3-layer intelligence system:
+VibeBite is not just a keyword searcher. It uses a **Retrieval-Augmented Generation (RAG)** pipeline to understand the _science_ behind your cravings.
 
-### 1. Semantic Vibe Mapping
+### 1. The Mood-to-Molecule Bridge (Gemini 2.5 Flash)
 
-We map abstract feelings to concrete food queries.
+When a user inputs a vibe (e.g., "Post-workout clarity" or "Rainy day blues"), the system doesn't just look for "soup".
 
-- **Input**: "The Weeknd - " (High Tempo / Minor Key)
-- **Logic**: `High BPM` + `Minor Key` = **Spicy / Late Night Food**
-- **Output**: Search Query "Spicy Wings"
+- **Input**: User Mood.
+- **RAG Context**: The system loads `src/data/custom-rules.json`, a curated knowledge base of cultural and scientific food associations.
+- **Generative Analysis**: **Gemini 2.5 Flash** analyzes the mood against this context to determine _why_ certain ingredients fit.
+  - _Example_: "Dark chocolate contains theobromine, which aligns with 'focus' moods due to mild stimulant properties."
+- **Output**: A precise set of base ingredients (e.g., "Dark Chocolate", "Walnuts").
 
-### 2. Smart Visuals (Context Recognition)
+### 2. Deep Flavor Matrix (FlavorDB Research)
 
-If a recipe lacks a good image, we don't show a blank placeholder.
+We implement the principles from the **FlavorDB** research paper (`A Database of Flavor Molecules`).
 
-- Our **Keyword Matcher** matches keywords (`"Burger"`, `"Salad"`, `"Soup"`) to a curated dataset of high-res culinary photography.
+- **Action**: The system takes the AI-suggested ingredients and queries the **FlavorDB API**.
+- **Molecular Pairing**: It identifies ingredients that share dominant flavor molecules with the base ingredient, ensuring scientifically harmonious pairings.
+- **Result**: A "Flavor Matrix" used to filter recipes.
 
-### 3. Predictive Content Generation (The "No-404" Engine)
+### 3. The Foodoscope Search Engine (Deterministic Registry)
 
-APIs often return a title but missing instructions. VibeBite fixes this on the fly.
+Our custom-built **Foodoscope Engine** (`src/lib/foodoscope.ts`) execute the final retrieval.
 
-- **Scenario**: API returns "Avocado Toast" but no steps.
-- **AI Action**: The `src/app/recipe/[id]/page.tsx` engine scans the title -> identifies "Avocado" + "Bread" -> Generates:
-  1.  _Toast the bread._
-  2.  _Mash the avocado._
-  3.  _Season with salt and pepper._
-
-**Result**: The user NEVER sees an incomplete page.
+- **Features**:
+  - **Deep Scan Registry**: Prevents API rate limits by intelligently caching and striding through recipe pages.
+  - **Scientific Local Filter**: Recipes are only accepted if they contain the molecular matches identified by FlavorDB.
+  - **Health Guards**: Strict post-processing filters for sodium, protein, and calories.
 
 ---
 
-## 💻 Tech Stack
+## 🚀 Key Features
 
-- **Framework**: [Next.js 14](https://nextjs.org/) (App Router)
+### 🧪 Scientific "Vibe" Search
+
+- Translates abstract input ("I missed my flight") into concrete culinary solutions using **Gemini AI**.
+- Explains the _reasoning_ behind every recommendation (e.g., "Why this works: Capsaicin triggers endorphins to counter stress").
+
+### ❤️ "Kam Namak" & Health Guards
+
+- Strict, uncompromised health filtering.
+- **Kam Namak (Low Sodium)**: Enforces `< 400mg` sodium limits for heart health.
+- **Guards**: High-Protein, Keto, Vegan, and Low-Calorie toggles that rigorously filter the dataset.
+
+### 🎵 Sonic Seasoning (Simulated)
+
+- Integrates music psychology with dining.
+- Pairs recipe vibes with curated **YouTube Music** playlists (e.g., "Lo-Fi Beats for Slow Cooking").
+
+### ⚡ Premium "Dark Mode" Aesthetic
+
+- built with **TailwindCSS** and **Framer Motion**.
+- Glassmorphism UI, smooth transitions, and a mobile-first responsive design.
+
+---
+
+## 📚 Research & References
+
+This project is built upon the foundational research in computational gastronomy:
+
+- **FlavorDB**: _A Database of Flavor Molecules_.
+  - Used for: Molecular pairing and cross-modal correspondence.
+  - [Launch FlavorDB](http://cosylab.iiitd.edu.in/flavordb)
+- **Foodoscope**: _Recipe Data & Nutrition API_.
+  - Used for: Real-time recipe metadata and nutritional analysis.
+
+---
+
+## 🛠️ Tech Stack
+
+- **Framework**: [Next.js 15](https://nextjs.org/) (App Router)
 - **Language**: TypeScript
-- **Styling**: Tailwind CSS (Custom "Glassmorphism" Design System)
-- **Animations**: Framer Motion
-- **Data**: Foodoscope API (RecipeDB)
+- **AI & LLM**: Google Gemini 2.5 Flash (via Vercel AI SDK / Direct API)
+- **Database**: Prisma (PostgreSQL / SQLite)
+- **Styling**: TailwindCSS
+- **External APIs**:
+  - FlavorDB (Scientific Pairing)
+  - Foodoscope (Recipe Data)
 
 ---
 
-## 🏁 Getting Started
+## 📦 Implementation Details
 
-### 1. Clone the repo
+### How things work under the hood:
 
-```bash
-git clone https://github.com/Rahulchaudharyji2/VibeBite.git
-cd vibebite
-```
+1.  **`src/app/api/translate-mood/route.ts`**:
+    - The entry point for AI. Receives user text, loads `custom-rules.json`, and prompts Gemini.
+    - Returns: JSON object with `ingredients` and `scientific_reasoning`.
 
-### 2. Install dependencies
+2.  **`src/lib/flavordb.ts`**:
+    - Takes the ingredients from Gemini.
+    - Performs a real-time fetch to `cosylab.iiitd.edu.in` to find biologically similar foods.
 
-```bash
-npm install
-```
-
-### 3. Set up Environment Variables
-
-Create a `.env.local` file in the root:
-
-```env
-# Get a free key from Foodoscope or use your own logic
-FOODOSCOPE_API_KEY=your_api_key_here
-```
-
-### 4. Run the development server
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+3.  **`src/lib/foodoscope.ts`**:
+    - The orchestrator. It manages the "Registry" of recipes.
+    - Instead of simple API calls, it performs "Strided Scans" (fetching pages 1, 2, 10, etc.) to get a diverse dataset.
+    - Applies the `applyHealthGuards()` function to strictly enforce nutritional limits.
 
 ---
 
-## 🤝 Contributing
+## 🏃‍♂️ Getting Started
 
-Built with using Next.js and ❤️ by [Your Name/Rahul].
+1.  **Clone the repository**:
+
+    ```bash
+    git clone https://github.com/Rahulchaudharyji2/VibeBite.git
+    cd VibeBite
+    ```
+
+2.  **Install dependencies**:
+
+    ```bash
+    npm install
+    ```
+
+3.  **Set up Environment Variables**:
+    Create a `.env.local` file:
+
+    ```env
+    GOOGLE_API_KEY=your_gemini_key
+    FOODOSCOPE_API_KEY=your_foodoscope_key
+    DATABASE_URL=your_database_url
+    ```
+
+4.  **Run the development server**:
+
+    ```bash
+    npm run dev
+    ```
+
+5.  Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+---
+
+_Built with ❤️ by Rahul Chaudhary_
