@@ -1,0 +1,12 @@
+{
+    "mood_rules": [
+        { "mood": "Happy", "ingredients": ["strawberry", "honey", "mint", "citrus", "chocolate"] },
+        { "mood": "Sad", "ingredients": ["chocolate", "oatmeal", "banana", "walnut", "chamomile"] },
+        { "mood": "Energetic", "ingredients": ["coffee", "spinach", "egg", "ginger", "beetroot"] },
+        { "mood": "Chill", "ingredients": ["chamomile", "cucumber", "salmon", "blueberry", "green tea"] },
+        { "mood": "Romantic", "ingredients": ["strawberry", "oyster", "chocolate", "vanilla", "red wine"] },
+        { "mood": "Focused", "ingredients": ["kale", "blueberry", "walnut", "salmon", "dark chocolate"] },
+        { "mood": "Jai Shree Ram", "ingredients": ["paneer", "saffron", "cardamom", "basmati rice", "jaggery"] },
+        { "mood": "Energetic workout", "ingredients": ["chicken breast", "sweet potato", "banana", "peanut butter", "whey"] }
+    ]
+}
