@@ -26,23 +26,25 @@ export async function GET(request: Request) {
 
         let recipes: any[] = [];
         let searchQuery = query || "";
-        if (mood) searchQuery = searchQuery ? `${searchQuery} ${mood}` : mood;
+        // If mood is present, we still use it as a base query if no other query exists? 
+        // Actually, logic below handles mood separate.
+
+        let goalList: string[] = [];
         if (goals) {
-            const goalList = goals.split(",");
-            searchQuery = searchQuery ? `${searchQuery} ${goalList.join(" ")}` : goalList.join(" ");
+            goalList = goals.split(",");
         }
 
         if (mood) {
             // Prioritize Vibe/Mood Analysis
-            // We pass the raw mood (e.g., "energetic") to trigger molecular matching.
             console.log(`[API] Searching by Mood: ${mood}`);
             recipes = await getRecipesByFlavor(mood, isLowSalt);
-        } else if (searchQuery) {
-            // Fallback to text search if no mood is present (e.g. manual search "Pasta")
-            console.log(`[API] Searching by Query: ${searchQuery}`);
-            recipes = await searchRecipes(searchQuery, isLowSalt);
         } else if (flavor) {
+            console.log(`[API] Searching by Flavor: ${flavor}`);
             recipes = await getRecipesByFlavor(flavor, isLowSalt);
+        } else {
+            // Fallback to text search or goals
+            console.log(`[API] Searching by Query: "${searchQuery}", Goals: ${goalList.length}`);
+            recipes = await searchRecipes(searchQuery, goalList, isLowSalt);
         }
 
         return NextResponse.json({ recipes });
