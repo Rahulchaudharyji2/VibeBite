@@ -87,3 +87,36 @@ export async function getNowPlaying() {
         isPlaying: true
     };
 }
+
+// 4. Get User History (Latest Liked Videos)
+export async function getUserHistory(accessToken: string) {
+    try {
+        const url = `${YOUTUBE_API_URL}/videos?part=snippet&myRating=like&maxResults=1`;
+        const res = await fetch(url, {
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: "application/json"
+            }
+        });
+
+        if (!res.ok) {
+            console.error(`[YouTube History] API Error: ${res.status}`);
+            return null;
+        }
+
+        const data = await res.json();
+        const item = data.items?.[0];
+
+        if (!item) return null;
+
+        return {
+            title: item.snippet.title,
+            artist: item.snippet.channelTitle,
+            cover: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url || "",
+            youtubeId: item.id
+        };
+    } catch (error) {
+        console.error("[YouTube History] Error:", error);
+        return null;
+    }
+}

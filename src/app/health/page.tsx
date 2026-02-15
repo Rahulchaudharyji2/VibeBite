@@ -12,6 +12,9 @@ export default function HealthPage() {
     const goals = [
         { id: "high-protein", name: "High Protein", description: "Muscle building focus." },
         { id: "low-sodium", name: "Low Sodium", description: "Heart healthy choices." },
+        { id: "keto", name: "Keto Friendly", description: "Low carb, high fat." },
+        { id: "vegan", name: "Pure Vegan", description: "No animal products." },
+        { id: "low-calorie", name: "Low Calorie", description: "Weight management." },
     ];
 
     const toggleGoal = (id: string) => {

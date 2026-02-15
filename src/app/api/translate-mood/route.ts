@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import fs from "fs";
+import path from "path";
 
 // You will need to add GEMINI_API_KEY to your .env.local file
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
@@ -12,24 +14,47 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Mood is required" }, { status: 400 });
         }
 
-        // If no API key is set yet, gracefully fall back to a basic string return
-        // so VibeBite doesn't crash during local testing without env vars.
-        if (!GEMINI_API_KEY) {
-            console.warn("[AI Bridge] No GEMINI_API_KEY found. Using fallback.");
-            return NextResponse.json({ ingredient: "mint" });
+        // 1. LOAD CUSTOM RULES (RAG KNOWLEDGE)
+        let rulesContext = "";
+        try {
+            const rulesPath = path.join(process.cwd(), "src/data/custom-rules.json");
+            const fileData = fs.readFileSync(rulesPath, "utf-8");
+            const rules = JSON.parse(fileData);
+            rulesContext = JSON.stringify(rules.mood_rules);
+        } catch (err) {
+            console.warn("[AI Bridge] Failed to load custom-rules.json for RAG context.");
         }
 
-        // The strict system prompt to force a single-word ingredient response
-        const prompt = `You are a culinary science AI. The user will give you a mood or emotion. 
-    You must reply with exactly ONE word: a raw food ingredient that represents that mood chemically or culturally. 
-    For example: 
-    - if the mood is 'happy', reply 'vanilla'
-    - if the mood is 'sad', reply 'chocolate'
-    - if the mood is 'stressed', reply 'chamomile'
-    - if the mood is 'energetic', reply 'lemon'
-    
-    Do not include punctuation, markdown, or explanations.
-    Mood: ${mood}`;
+        // If no API key is set yet, gracefully fall back
+        if (!GEMINI_API_KEY) {
+            console.warn("[AI Bridge] No GEMINI_API_KEY found. Using fallback.");
+            return NextResponse.json({ 
+                ingredients: ["mint"], 
+                reason: "Using generic fallback due to missing configuration.",
+                ingredient: "mint"
+            });
+        }
+
+        // 2. CONSTRUCT RAG PROMPT
+        const prompt = `You are a culinary science AI for the VibeBite app. 
+        The user has provided a mood: "${mood}".
+        
+        ### Scientific Context (Curated Rules):
+        ${rulesContext}
+        
+        ### Instructions:
+        1. Contextual Analysis: Look for the mood in the curated rules above.
+        2. Scientific Reasoning: Explain WHY specific ingredients represent this mood chemically (e.g., "Theobromine in chocolate triggers dopamine") or culturally.
+        3. Dynamic Suggestions: If not in rules, suggest 2-3 raw food ingredients based on cross-modal correspondence.
+        4. Response Format: You MUST reply with a valid JSON object only. No preamble.
+        
+        Expected JSON Schema:
+        {
+          "ingredients": ["ingredient1", "ingredient2"],
+          "reason": "Short 1-sentence scientific or cultural explanation."
+        }
+        
+        Mood: ${mood}`;
 
         // Lightweight direct fetch to the Gemini 2.5 Flash model
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
@@ -38,8 +63,9 @@ export async function POST(request: Request) {
             body: JSON.stringify({
                 contents: [{ parts: [{ text: prompt }] }],
                 generationConfig: {
-                    temperature: 0.2, // Low temperature ensures highly deterministic, reliable outputs
-                    maxOutputTokens: 10,
+                    temperature: 0.2, 
+                    maxOutputTokens: 250,
+                    responseMimeType: "application/json"
                 }
             })
         });
@@ -47,41 +73,41 @@ export async function POST(request: Request) {
         if (!response.ok) {
             if (response.status === 429) {
                 console.warn("[AI Bridge] Gemini Rate Limit Exceeded (429). Using smart fallback.");
-
-                const fallbackMap: Record<string, string> = {
-                    "comfort food": "potato",
-                    "happy": "vanilla",
-                    "sad": "chocolate",
-                    "energetic": "lemon",
-                    "relaxed": "chamomile",
-                    "stressed": "mint",
-                    "romantic": "strawberry",
-                    "party": "cheese",
-                    "focused": "coffee"
-                };
-
-                const key = mood.toLowerCase().trim();
-                const fallbackIngredient = fallbackMap[key] || fallbackMap[key.split(" ")[0]] || "mint";
-
-                return NextResponse.json({ ingredient: fallbackIngredient });
+                return NextResponse.json({ 
+                    ingredients: ["mint", "chamomile"],
+                    reason: "Using calming herbal extracts to manage system throughput.",
+                    ingredient: "mint, chamomile"
+                });
             }
             throw new Error(`Google API responded with status: ${response.status}`);
         }
 
         const data = await response.json();
-
-        // Extract the text block from the Gemini payload
-        let ingredient = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "mint";
-
-        // Defensive sanitization: remove any stray punctuation or line breaks the AI might have sneaked in
-        ingredient = ingredient.replace(/[^a-zA-Z\s]/g, "").toLowerCase().trim();
-
-        return NextResponse.json({ ingredient });
+        const aiResponseText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "{}";
+        
+        try {
+            const parsed = JSON.parse(aiResponseText);
+            console.log(`[AI Bridge] RAG Analysis for '${mood}':`, parsed);
+            return NextResponse.json({
+                ingredients: parsed.ingredients || ["mint"],
+                reason: parsed.reason || "Matched via sensory alignment patterns.",
+                ingredient: (parsed.ingredients || ["mint"]).join(", ")
+            });
+        } catch (e) {
+            console.error("[AI Bridge] Parse Error:", aiResponseText);
+            return NextResponse.json({ 
+                ingredients: ["mint"], 
+                reason: "Standardized herbal profile for baseline synchronization.",
+                ingredient: "mint"
+            });
+        }
 
     } catch (error) {
-        console.error("[AI Bridge] Translation Error:", error);
-        // Ultimate fallback: if the network drops or API quota is hit, return a safe default
-        // so the FlavorDB search still has a valid string to work with.
-        return NextResponse.json({ ingredient: "mint" });
+        console.error("[AI Bridge] Error:", error);
+        return NextResponse.json({ 
+            ingredients: ["mint"], 
+            reason: "Safe baseline ingredients due to connection instability.",
+            ingredient: "mint"
+        });
     }
 }

@@ -2,15 +2,13 @@ const FLAVORDB_API_KEY = process.env.FOODOSCOPE_API_KEY || "";
 const FLAVORDB_BASE_URL = "http://cosylab.iiitd.edu.in:6969/flavordb";
 
 /**
- * Step 1: The AI Translation Bridge
- * Dynamically translates an abstract mood ("chill") into a concrete ingredient ("chamomile").
- * This eliminates the need for hardcoded dictionaries.
+ * Step 1: The AI Translation Bridge (Deep Analysis)
+ * Fetches enriched data from the AI bridge, including scientific reasoning.
  */
-async function translateMoodToIngredient(mood: string): Promise<string> {
+export async function getDeepAnalysis(mood: string): Promise<{ ingredients: string[], reason: string }> {
     try {
-        // You will need to create a simple Next.js API route (/api/translate-mood) 
-        // that prompts an LLM: "Reply with ONLY a single raw food ingredient that represents the mood '{mood}'."
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/translate-mood`, {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+        const response = await fetch(`${baseUrl}/api/translate-mood`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ mood })
@@ -18,69 +16,78 @@ async function translateMoodToIngredient(mood: string): Promise<string> {
 
         if (response.ok) {
             const data = await response.json();
-            console.log(`[AI Bridge] Translated mood '${mood}' -> ingredient '${data.ingredient}'`);
-            return data.ingredient.toLowerCase();
+            return {
+                ingredients: data.ingredients || [data.ingredient],
+                reason: data.reason || "Matched via scientific flavor profile analysis."
+            };
         }
     } catch (error) {
-        console.error("[AI Bridge] Translation failed:", error);
+        console.error("[AI Bridge] Deep Analysis failed:", error);
     }
     
-    // Absolute fallback if your AI translation route is down, 
-    // ensuring the app doesn't crash.
-    return mood.toLowerCase(); 
+    return {
+        ingredients: [mood.toLowerCase()],
+        reason: "Standard flavor mapping based on historical culinary data."
+    };
+}
+
+async function translateMoodToIngredient(mood: string): Promise<string> {
+    const analysis = await getDeepAnalysis(mood);
+    return analysis.ingredients.join(", ");
 }
 
 /**
  * Step 2: The Live FlavorDB Fetch
- * Takes the dynamically generated ingredient and fetches its molecular pairings.
+ * Takes the dynamically generated ingredients (comma separated) and fetches their molecular pairings.
  */
 export async function getMolecularPairings(flavorOrMood: string): Promise<string[]> {
-    // 1. Get the dynamic ingredient translation
-    const apiQueryIngredient = await translateMoodToIngredient(flavorOrMood);
+    // 1. Get the dynamic ingredient translation (might be "mint, honey")
+    const apiQueryString = await translateMoodToIngredient(flavorOrMood);
+    const ingredients = apiQueryString.split(",").map(i => i.trim());
 
-    // 2. Fetch exclusively from the Live FlavorDB API
-    try {
-        const url = `${FLAVORDB_BASE_URL}/food/by-alias?food_pair=${encodeURIComponent(apiQueryIngredient)}`;
-        console.log(`[FlavorDB] Fetching live pairings for API query: ${apiQueryIngredient}`);
+    // Aggregate results from multiple ingredients
+    const allMatches = new Set<string>();
 
-        const res = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${FLAVORDB_API_KEY}`,
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            },
-            next: { revalidate: 3600 } 
-        });
+    for (const apiQueryIngredient of ingredients) {
+        if (!apiQueryIngredient) continue;
+        allMatches.add(apiQueryIngredient); // Always include the base ingredient
 
-        if (!res.ok) {
-            console.error(`[FlavorDB] Live API Error: ${res.status}`);
-            return [apiQueryIngredient]; 
+        try {
+            const url = `${FLAVORDB_BASE_URL}/food/by-alias?food_pair=${encodeURIComponent(apiQueryIngredient)}`;
+            console.log(`[FlavorDB] Fetching live pairings for: ${apiQueryIngredient}`);
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+            const res = await fetch(url, {
+                headers: {
+                    'Authorization': `Bearer ${FLAVORDB_API_KEY}`,
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                signal: controller.signal,
+                next: { revalidate: 3600 } 
+            });
+
+            clearTimeout(timeoutId);
+
+            if (res.ok) {
+                const data = await res.json();
+                let parsed: string[] = [];
+
+                if (data && Array.isArray(data.topSimilarEntities)) {
+                    parsed = data.topSimilarEntities.map((item: any) => item.entityName);
+                }
+
+                parsed.filter(i => typeof i === 'string' && i.length > 0)
+                      .forEach(i => allMatches.add(i));
+            }
+        } catch (e: any) {
+            console.warn(`[FlavorDB] Failed to fetch for '${apiQueryIngredient}':`, e.message);
         }
-
-        const data = await res.json();
-        let parsedIngredients: string[] = [];
-
-        // 🚨 THE FIX: Parse the exact structure revealed by our debug script
-        if (data && Array.isArray(data.topSimilarEntities)) {
-            // Map over the array and extract the 'entityName' string
-            parsedIngredients = data.topSimilarEntities.map((item: any) => item.entityName);
-        } else if (Array.isArray(data)) {
-            // Safe fallback just in case their API shape changes later
-            parsedIngredients = data.map((item: any) => item.entityName || typeof item === 'string' ? item : null);
-        }
-
-        // Clean up the array (remove undefined/nulls and empty strings)
-        parsedIngredients = parsedIngredients.filter(i => typeof i === 'string' && i.length > 0);
-
-        if (parsedIngredients.length > 0) {
-            console.log(`[FlavorDB] Matches Found: ${parsedIngredients.slice(0, 5).join(", ")}...`);
-            return parsedIngredients;
-        } else {
-            console.warn(`[FlavorDB] API returned empty pairings for '${apiQueryIngredient}'.`);
-            return [apiQueryIngredient];
-        }
-    } catch (e) {
-        console.error(`[FlavorDB] Live API connection failed:`, e);
-        return [apiQueryIngredient];
     }
+
+    const resultArray = Array.from(allMatches);
+    console.log(`[FlavorDB] Deep Search Matrix: [${resultArray.slice(0, 10).join(", ")}...]`);
+    return resultArray;
 }

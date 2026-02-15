@@ -1,487 +1,400 @@
 // ============================================
-// Foodoscope Scientific Recipe Engine (Fixed & Optimized)
+// Foodoscope Scientific Recipe Engine (Restored Intelligence)
 // ============================================
 
 import { getMolecularPairings } from "./flavordb";
-
-// ============================================
-// CONFIG
-// ============================================
+import fs from "fs";
+import path from "path";
 
 const API_KEY = process.env.FOODOSCOPE_API_KEY || "";
-
 const BASE_URL = "https://api.foodoscope.com/recipe2-api";
+const CACHE_TTL = 10 * 60 * 1000;
 
-const CACHE_TTL = 5 * 60 * 1000;
-
-if (!API_KEY) {
-    console.error("CRITICAL: FOODOSCOPE_API_KEY is not set.");
+interface CachedResults {
+    data: any[];
+    timestamp: number;
 }
+const searchCache = new Map<string, CachedResults>();
+
+// DETERMINISTIC DEEP SCAN REGISTRY
+// Stores raw recipes from multiple pages to allow local search without rate limits
+let recipeRegistry: any[] = [];
+let registryLastFetched = 0;
+let registryFailedTimestamp = 0;
+const REGISTRY_TTL = 30 * 60 * 1000; // 30 minutes
+const FAILED_COOLOFF = 2 * 60 * 1000; // 2 minutes cooloff after 429
+
+// Initial Seed Loading
+const loadSeedRecipes = () => {
+    try {
+        const seedPath = path.join(process.cwd(), "src/data/seed-recipes.json");
+        if (fs.existsSync(seedPath)) {
+            const data = JSON.parse(fs.readFileSync(seedPath, "utf-8"));
+            return data.recipes || [];
+        }
+    } catch (err) {
+        console.warn("[Engine] No seed recipes found.");
+    }
+    return [];
+};
+
+recipeRegistry = loadSeedRecipes();
 
 // ============================================
-// CACHE
+// CORE API CALL
 // ============================================
 
-const searchCache = new Map<
-    string,
-    { data: any[]; timestamp: number }
->();
-
-// ============================================
-// FETCH WRAPPER
-// ============================================
-
-async function fetchFromApi(
-    endpoint: string,
-    params: Record<string, string> = {}
-) {
-    const query = new URLSearchParams({
-        ...params,
-        _: Date.now().toString()
-    }).toString();
-
+export async function fetchFromApi(endpoint: string, params: Record<string, string> = {}) {
+    const queryList = { ...params, _: Date.now().toString() };
+    const query = new URLSearchParams(queryList).toString();
     const url = `${BASE_URL}${endpoint}?${query}`;
 
     try {
+        console.log(`[Engine] Fetching: ${url}`);
         const res = await fetch(url, {
             headers: {
-                Authorization: `Bearer ${API_KEY}`,
+                "Authorization": `Bearer ${API_KEY}`,
                 "Content-Type": "application/json"
             },
-            cache: "no-store",
-            next: { revalidate: 0 }
+            next: { revalidate: 3600 }
         });
 
         if (!res.ok) {
-            console.error(
-                `API ERROR ${res.status}:`,
-                await res.text()
-            );
-            return null;
+            const errorText = await res.text();
+            console.error(`[Engine] API Error (${res.status}): ${errorText.slice(0, 100)}`);
+            try {
+                return JSON.parse(errorText);
+            } catch {
+                return { error: `HTTP ${res.status}`, message: errorText };
+            }
         }
-
         return await res.json();
-    } catch (err) {
-        console.error("Fetch failed:", err);
-        return null;
+    } catch (err: any) {
+        console.error(`[Engine] Fetch Exception: ${err.message}`);
+        return { error: "FetchException", message: err.message };
     }
 }
 
-// ============================================
-// IMAGE FALLBACK
-// ============================================
-
-function getFallbackImage(title: string) {
-    const defaults = [
-        "https://images.unsplash.com/photo-1546069901-ba9599a7e63c",
-        "https://images.unsplash.com/photo-1504674900247-0877df9cc836",
-        "https://images.unsplash.com/photo-1490645935967-10de6ba17061",
-        "https://images.unsplash.com/photo-1551183053-bf91a1d81141",
-        "https://images.unsplash.com/photo-1565958011703-44f9829ba187",
-        "https://images.unsplash.com/photo-1568901346375-23c9450c58cd"
-    ];
-
-    let hash = 0;
-    for (let i = 0; i < title.length; i++) {
-        hash =
-            (hash << 5) -
-            hash +
-            title.charCodeAt(i);
-    }
-
-    return defaults[Math.abs(hash) % defaults.length];
+export async function fetchRecipesBatch(page: number = 1, limit: number = 50, params: Record<string, string> = {}) {
+    return fetchFromApi("/recipe/recipesinfo", { page: String(page), limit: String(limit), ...params });
 }
 
 // ============================================
-// FETCH RECIPES (CORRECT METHOD)
+// DETERMINISTIC DEEP SCAN REGISTRY
 // ============================================
 
-export async function fetchRecipesBatch(
-    page: number = 1,
-    limit: number = 50,
-    params: Record<string, string> = {}
-) {
-    const data = await fetchFromApi(
-        "/recipe/recipesinfo",
-        {
-            page: String(page),
-            limit: String(limit),
-            ...params
+let isWarmingUp = false;
+
+const getRegistry = async (mode: "strided" | "sequential" = "sequential") => {
+    // 1. Check if we have valid cache
+    if (recipeRegistry.length > seedDataSize() && Date.now() - registryLastFetched < REGISTRY_TTL) {
+        return recipeRegistry;
+    }
+
+    // 2. Cooloff check (if we recently hit 429)
+    if (Date.now() - registryFailedTimestamp < FAILED_COOLOFF) {
+        console.warn(`[Engine] Registry in cooloff period. Using cache of ${recipeRegistry.length} recipes.`);
+        return recipeRegistry;
+    }
+
+    if (isWarmingUp) {
+        console.log("[Engine] Registry warming in progress... waiting.");
+        while (isWarmingUp) {
+            await new Promise(r => setTimeout(r, 1000));
         }
-    );
+        return recipeRegistry;
+    }
 
-    if (!data?.payload?.data)
-        return [];
+    isWarmingUp = true;
+    console.log(`[Engine] Warming up Deterministic Registry (Strict Rate Limit Mode)...`);
+    
+    // Fetch first 5 pages sequentially to stay well within 25 RPM (1 request every 2.5s)
+    const pages = [1, 2, 3, 4, 10]; // Reduced to 5 high-value pages
+    const newBatch: any[] = [];
 
-    return data.payload.data;
+    try {
+        for (const p of pages) {
+            console.log(`[Engine] Fetching Page ${p}...`);
+            const result = await fetchFromApi("/recipe/recipesinfo", { page: String(p), limit: "50" });
+            
+            if (result?.payload?.data) {
+                newBatch.push(...result.payload.data);
+                console.log(`[Engine] Page ${p} loaded: ${result.payload.data.length} recipes.`);
+            } else if (result?.error?.includes("429") || result?.error === "Rate Limit Exceeded") {
+                console.error("[Engine] 429 Hit during warmup. Starting cooloff.");
+                registryFailedTimestamp = Date.now();
+                break;
+            } else {
+                console.warn(`[Engine] Page ${p} failed: ${result?.error || result?.message || "Unknown error"}`);
+            }
+            // 2.5s delay = 24 RPM max
+            await new Promise(r => setTimeout(r, 2500));
+        }
+    } finally {
+        isWarmingUp = false;
+    }
+    
+    if (newBatch.length > 0) {
+        // Merge with seed but keep registry healthy
+        const seed = loadSeedRecipes();
+        const seenIds = new Set(seed.map((r: any) => r.Recipe_id));
+        const uniqueNew = newBatch.filter(r => !seenIds.has(r.Recipe_id));
+        
+        recipeRegistry = [...seed, ...uniqueNew];
+        registryLastFetched = Date.now();
+        console.log(`[Engine] Registry Updated: ${recipeRegistry.length} total recipes.`);
+    }
+    
+    return recipeRegistry;
+};
+
+// Helper for seed size
+function seedDataSize() {
+    return 4; // Our Magpie/Karela/Chicken/Mint seed
 }
 
-// ============================================
-// HELPER: MAP RECIPE DATA
-// ============================================
+export async function scanRecipes(mode: "strided" | "sequential" = "strided", query: string = "") {
+    const rawData = await getRegistry(mode);
+    
+    if (mode === "sequential") {
+        // Return only the first few pages' worth of data for strict sequence
+        return rawData.slice(0, 250); 
+    }
+    
+    return rawData;
+}
 
-function mapRecipeData(rawRecipes: any[], molecularIngredients: string[] = []) {
-    return rawRecipes.map((r) => {
-        const title = r.Recipe_title ?? "Unknown Recipe";
-
+function mapRecipeData(raw: any[], molecules: string[] = []) {
+    return raw.map(r => {
+        const title = r.Recipe_title || "Recipe";
         return {
             id: r.Recipe_id,
             title,
-            image: r.img_url ?? getFallbackImage(title),
-            time: `${r.total_time ?? 30} min`,
-            calories: Number(r.Calories ?? r["Energy (kcal)"] ?? 0),
-            sodium: Number(r["Sodium, Na (mg)"] ?? 0),
+            image: r.img_url || `https://images.unsplash.com/photo-1546069901-ba9599a7e63c`,
+            time: `${r.total_time || 30} min`,
+            calories: Number(r.Calories || 0),
+            sodium: Number(r["Sodium, Na (mg)"] || 0),
             rating: 4.5,
-            scientificMatch: molecularIngredients.length > 0
-                ? (molecularIngredients.find((i) => title.toLowerCase().includes(i.toLowerCase())) ?? "General Match")
-                : "Direct Match",
+            scientificMatch: molecules.length > 0 
+                ? molecules.find(m => title.toLowerCase().includes(m.toLowerCase())) || "Scientific Match"
+                : "Standard Match",
             macros: {
-                protein: Number(r["Protein (g)"] ?? 0),
-                carbs: Number(r["Carbohydrate, by difference (g)"] ?? 0),
-                fat: Number(r["Total lipid (fat) (g)"] ?? 0)
+                protein: Number(r["Protein (g)"] || 0),
+                carbs: Number(r["Carbohydrate, by difference (g)"] || 0),
+                fat: Number(r["Total lipid (fat) (g)"] || 0)
             },
-            region: r.Region ?? "Global",
-            subRegion: r.Sub_region
+            region: r.Region || "Global"
         };
     });
 }
 
 // ============================================
-// SCIENTIFIC SEARCH ENGINE
+// MOOD & VIBE SEARCH (getRecipesByFlavor)
 // ============================================
 
-export async function getRecipesByFlavor(
-    flavor: string,
-    isLowSalt: boolean = false
-) {
-    const cacheKey =
-        `${flavor}-${isLowSalt}`;
+export async function getRecipesByFlavor(flavor: string, isLowSalt: boolean = false, goals: string[] = [], region?: string) {
+    const cacheKey = `deep_vibe_${flavor}_${isLowSalt}_${region || 'all'}`;
+    const cached = searchCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) return cached.data;
 
-    const cached =
-        searchCache.get(cacheKey);
+    console.log(`[Engine] Analyzing Vibe: ${flavor}`);
+    
+    // Step 1: Get Deep Molecular Matrix from FlavorDB
+    const molecules = await getMolecularPairings(flavor);
+    
+    // Step 2: Perform Strided Scan for Diversity
+    const rawData = await scanRecipes("strided");
+    
+    // Step 3: Scientific Local Filter
+    const filtered = rawData.filter((r) => {
+        const title = (r.Recipe_title ?? "").toLowerCase();
+        return molecules.some((ing) => title.includes(ing.toLowerCase())) || title.includes(flavor.toLowerCase());
+    });
 
-    if (
-        cached &&
-        Date.now() -
-        cached.timestamp <
-        CACHE_TTL
-    ) {
-        console.log("Cache hit");
-        return cached.data;
-    }
+    let processed = mapRecipeData(filtered.length > 0 ? filtered : rawData, molecules);
+    processed = applyHealthGuards(processed, goals, isLowSalt);
 
-    // ========================================
-    // STEP 1: Get molecular pairings
-    // ========================================
-
-    const molecularIngredients =
-        await getMolecularPairings(
-            flavor
-        );
-
-    console.log(
-        "Molecular matches:",
-        molecularIngredients
-    );
-
-    // ========================================
-    // STEP 2: Fetch multiple pages
-    // ========================================
-
-    // Optimized for rate limits: fetch 1 big page instead of 3
-    const pages = [1];
-
-    // We already fetch 50 recipes, which is decent.
-    const batchResults =
-        await Promise.all(
-            pages.map((page) =>
-                fetchRecipesBatch(page, 50)
-            )
-        );
-
-    let rawRecipes =
-        batchResults.flat();
-
-    // ========================================
-    // STEP 3: Scientific filtering
-    // ========================================
-
-    rawRecipes =
-        rawRecipes.filter((r) => {
-            const title =
-                (
-                    r.Recipe_title ??
-                    ""
-                ).toLowerCase();
-
-            return molecularIngredients.some(
-                (ingredient) =>
-                    title.includes(
-                        ingredient.toLowerCase()
-                    )
-            );
-        });
-
-    // fallback if empty
-    if (rawRecipes.length === 0) {
-        rawRecipes =
-            batchResults.flat();
-    }
-
-    // ========================================
-    // STEP 4: Deduplicate
-    // ========================================
-
-    const seen = new Set();
-
-    rawRecipes =
-        rawRecipes.filter((r) => {
-            if (
-                seen.has(r.Recipe_id)
-            )
-                return false;
-
-            seen.add(
-                r.Recipe_id
-            );
-
-            return true;
-        });
-
-    // ========================================
-    // STEP 5: Map
-    // ========================================
-
-    let recipes = mapRecipeData(rawRecipes, molecularIngredients);
-
-    // ========================================
-    // STEP 6: Low sodium filter
-    // ========================================
-
-    if (isLowSalt) {
-        recipes =
-            recipes.filter(
-                (r) =>
-                    r.sodium <
-                    100
-            );
-    }
-
-    const finalResults =
-        recipes.slice(0, 12);
-
-    // ========================================
-    // CACHE
-    // ========================================
-
-    searchCache.set(
-        cacheKey,
-        {
-            data: finalResults,
-            timestamp:
-                Date.now()
-        }
-    );
-
+    const finalResults = processed.slice(0, 12);
+    searchCache.set(cacheKey, { data: finalResults, timestamp: Date.now() });
     return finalResults;
 }
 
 // ============================================
-// SEARCH WRAPPER
+// AI INTENT EXTRACTION
 // ============================================
 
-export async function searchRecipes(
-    query: string = "",
-    goals: string[] = [],
-    isLowSalt = false
-) {
-    console.log(`[Foodoscope] Search: "${query}", Goals: ${JSON.stringify(goals)}`);
+export async function extractSearchIntent(query: string): Promise<{ keywords: string[], goals: string[] }> {
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    console.log(`[Engine] Intent extraction for "${query}". AI Key present: ${!!GEMINI_API_KEY}`);
 
-    // Fetch a larger batch to filter client-side
-    // Since API search params are unreliable, we fetch a broad set and filter.
-    // Determine if we should use a goal as a search term to get better initial candidates
-    // Priority: Query > Vegan > Keto > Gluten Free > etc.
-    let searchTerm = query;
-    const lowerGoals = goals.map(g => g.toLowerCase());
+    if (GEMINI_API_KEY) {
+        try {
+            const prompt = `You are a culinary research AI.
+            Transform this user craving into searchable database keywords.
+            User craving: "${query}"
+            
+            Rules:
+            - Extract ONLY the core food entities (ingredients, dish names).
+            - Ignore filler words like "something", "I want", "for a".
+            - Identify health goals: "low-sodium", "vegan", "keto", "high-protein".
+            
+            Output MUST be valid JSON:
+            {
+              "keywords": ["Spicy", "Soup", "Noodles"],
+              "goals": ["low-sodium"]
+            }`;
 
-    if ((!searchTerm || searchTerm.trim() === "") && goals.length > 0) {
-        if (lowerGoals.includes("vegan")) searchTerm = "Vegan";
-        else if (lowerGoals.includes("keto")) searchTerm = "Keto";
-        else if (lowerGoals.includes("gluten-free")) searchTerm = "Gluten Free";
-        else if (lowerGoals.includes("paleo")) searchTerm = "Paleo";
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { 
+                        maxOutputTokens: 150,
+                        temperature: 0.1,
+                        responseMimeType: "application/json" 
+                    }
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+                text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+                const parsed = JSON.parse(text);
+                return {
+                    keywords: parsed.keywords || [],
+                    goals: parsed.goals || []
+                };
+            } else {
+                console.error(`[Engine] Gemini API Error (${response.status}): ${await response.text()}`);
+            }
+        } catch (e) {
+            console.error("[Engine] AI Intent Extraction failed:", e);
+        }
     }
 
-    // Fetch a larger batch to filter client-side
-    // We pass 'q' if we have a search term to narrow down the pool (if supported by API)
-    // Recipe_title seems too strict.
-    const apiParams: Record<string, string> = {};
-    if (searchTerm && searchTerm.trim() !== "") {
-        apiParams["q"] = searchTerm;
-    }
+    // SMART FALLBACK
+    const fillers = ["something", "i", "want", "for", "a", "the", "some", "with", "me", "craving", "can", "you", "find"];
+    const keywords = query.toLowerCase().split(" ").filter(w => w.length > 2 && !fillers.includes(w));
+    return { keywords: keywords.length > 0 ? keywords : [query], goals: [] };
+}
 
-    // Optimization: Avoid Promise.all to prevent 429 Rate Limit errors.
-    // Try to fetch with the search term first.
-    let rawData = await fetchRecipesBatch(1, 50, apiParams);
+export async function searchRecipes(query: string, goals: string[] = [], isLowSalt: boolean = false, region?: string) {
+    const cacheKey = `search_${query}_${isLowSalt}_${region || 'all'}_${goals.join(",")}`;
+    const cached = searchCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) return cached.data;
 
-    // If specific search failed (e.g. q=Vegan returned 0), fallback to generic batch
-    if (rawData.length === 0 && searchTerm) {
-        console.log(`[Foodoscope] Search for "${searchTerm}" returned 0 results. Falling back to generic batch.`);
-        rawData = await fetchRecipesBatch(1, 50);
-    }
+    console.log(`[Engine] Deterministic Search: ${query}`);
+    
+    let q = query.toLowerCase().trim();
+    let activeGoals = [...goals];
 
-    let recipes = mapRecipeData(rawData);
+    // Step 1: Get data from Registry
+    const rawData = await scanRecipes("strided", q);
+    
+    // Step 2: Attempt Direct Match
+    let filtered = rawData.filter((r) => {
+        const title = (r.Recipe_title || r.recipe_title || r.title || "").toLowerCase();
+        return title.includes(q) || q.split(" ").every(word => title.includes(word));
+    });
 
-    // 1. Text Search (Client-side fallback)
-    if (query && query.trim().length > 0) {
-        const q = query.toLowerCase().trim();
-        recipes = recipes.filter(r => r.title.toLowerCase().includes(q));
-    }
-
-    // 2. Goal Filtering
-    if (goals.length > 0) {
-        recipes = recipes.filter(r => {
-            let pass = true;
-
-            // Health Logic
-            if (goals.includes("high-protein")) {
-                // > 20g protein
-                if (r.macros.protein < 20) pass = false;
-            }
-
-            if (goals.includes("low-sodium") || goals.includes("heart-healthy")) {
-                // < 400mg sodium
-                if (r.sodium > 400) pass = false;
-            }
-
-            if (goals.includes("keto")) {
-                // Low carb (< 20g) and High Fat
-                // Relaxed from 15 to 20 to find more matches in random batches
-                if (r.macros.carbs > 20) pass = false;
-            }
-
-            if (goals.includes("vegan")) {
-                const lowerTitle = r.title.toLowerCase();
-                // Strict: meat, chicken, beef, pork, fish, egg, cheese, cream, milk, honey, butter
-                const nonVeganTerms = ["chicken", "beef", "pork", "steak", "fish", "salmon", "shrimp", "tuna", "egg", "cheese", "cream", "milk", "butter", "honey", "yogurt", "sausage", "bacon", "meat", "lamb", "duck", "turkey"];
-
-                const isExplicitProhibitive = nonVeganTerms.some(term => lowerTitle.includes(term));
-                const isExplicitVegan = lowerTitle.includes("vegan") || lowerTitle.includes("plant based");
-
-                // If it explicitly says "Vegan", it's good.
-                // If it contains animal products, reject.
-                // If ambiguous, we accept it IF we are falling back to generic data, to ensure we show SOMETHING.
-                if (!isExplicitVegan) {
-                    if (isExplicitProhibitive) pass = false;
-                }
-            }
-
-            if (goals.includes("gluten-free")) {
-                if (!r.title.toLowerCase().includes("gluten free") && !r.title.toLowerCase().includes("gf")) pass = false;
-            }
-
-            if (goals.includes("weight-loss")) {
-                // Low calorie (< 400)
-                if (r.calories > 400) pass = false;
-            }
-
-            return pass;
+    // Step 3: AI intent extraction if direct matching is weak
+    if (filtered.length < 2 && q.length > 5) {
+        console.log(`[Engine] Search weak for "${q}". Extracting AI Intent...`);
+        const intent = await extractSearchIntent(q);
+        console.log(`[Engine] AI Intent:`, intent);
+        
+        activeGoals = Array.from(new Set([...activeGoals, ...intent.goals]));
+        
+        filtered = rawData.filter((r) => {
+            const title = (r.Recipe_title || r.recipe_title || r.title || "").toLowerCase();
+            return intent.keywords.some(keyword => title.includes(keyword.toLowerCase()));
         });
     }
 
-    // 3. Legacy Low Salt Flag
-    if (isLowSalt) {
-        recipes = recipes.filter(r => r.sodium < 100);
-    }
+    // Step 4: Map and Refine
+    let processed = mapRecipeData(filtered.length > 0 ? filtered : rawData.slice(0, 10), []);
+    processed = applyHealthGuards(processed, activeGoals, isLowSalt);
 
-    return recipes.slice(0, 12);
+    // Step 5: Deterministic Ranking
+    processed.sort((a, b) => {
+        const aTitle = a.title.toLowerCase();
+        const bTitle = b.title.toLowerCase();
+        if (aTitle.startsWith(q) && !bTitle.startsWith(q)) return -1;
+        if (!aTitle.startsWith(q) && bTitle.startsWith(q)) return 1;
+        return 0;
+    });
+
+    const results = processed.slice(0, 12);
+    searchCache.set(cacheKey, { data: results, timestamp: Date.now() });
+    return results;
 }
 
 // ============================================
-// GET RECIPE BY ID
+// UTILITIES
 // ============================================
 
-export async function getRecipeById(
-    id: string
-) {
-    // Optimized for rate limits: direct ID lookup
-    const data = await fetchFromApi("/recipe/recipesinfo", {
-        "Recipe_id": id,
-        "limit": "1"
-    });
-
-    let found;
-
-    if (data && data.payload && data.payload.data && data.payload.data.length > 0) {
-        found = data.payload.data[0];
-    } else {
-        // Fallback: Check if it's in the list (unlikely if limit=1 returned nothing)
-        return null; // Or retry? No, ID lookup should be definitive.
+function applyHealthGuards(recipes: any[], goals: string[], isLowSalt: boolean) {
+    console.log(`[Engine] Applying Guards. Goals: ${goals.join(",")}, LowSalt: ${isLowSalt}, Input Count: ${recipes.length}`);
+    let filtered = recipes;
+    
+    // 1. Heart Guard (Global Preference)
+    if (isLowSalt) {
+        filtered = filtered.filter(r => r.sodium < 200); 
+    }
+    
+    // 2. High-Protein Goal
+    if (goals.includes("high-protein")) {
+        filtered = filtered.filter(r => r.macros.protein > 15);
     }
 
-    if (!found) return null;
+    // 3. Keto Goal
+    if (goals.includes("keto")) {
+        filtered = filtered.filter(r => r.macros.carbs < 20);
+    }
 
-    const title =
-        found.Recipe_title;
+    // 4. Low Sodium Goal (Explicit)
+    if (goals.includes("low-sodium")) {
+        filtered = filtered.filter(r => r.sodium < 400);
+    }
+
+    // 5. Vegan Goal
+    if (goals.includes("vegan")) {
+        const animalProds = ["chicken", "beef", "meat", "egg", "fish", "pork", "milk", "chees", "lamb", "shrimp", "yogurt", "butter", "honey", "dairy", "cream", "paneer", "ghee", "lard"];
+        filtered = filtered.filter(r => {
+            const lowerTitle = (r.title || "").toLowerCase();
+            const isNonVegan = animalProds.some(ap => lowerTitle.includes(ap));
+            return !isNonVegan;
+        });
+    }
+
+    // 6. Low Calorie Goal
+    if (goals.includes("low-calorie")) {
+        filtered = filtered.filter(r => r.calories < 400);
+    }
+    
+    return filtered.slice(0, 12);
+}
+
+export async function getRecipeById(id: string) {
+    const data = await fetchFromApi("/recipe/recipesinfo", { "Recipe_id": id, "limit": "1" });
+    const found = data?.payload?.data?.[0];
+    if (!found) return null;
 
     return {
         id,
-
-        title,
-
-        image:
-            found.img_url ??
-            getFallbackImage(
-                title
-            ),
-
-        time: `${found.total_time ??
-            30
-            } min`,
-
-        calories:
-            Number(
-                found.Calories ??
-                0
-            ),
-
-        description:
-            found.Processes?.replaceAll(
-                "||",
-                ". "
-            ) ??
-            "",
-
-        ingredients:
-            found.ingredients ??
-            [],
-
-        macros: {
-            protein:
-                Number(
-                    found[
-                    "Protein (g)"
-                    ] ?? 0
-                ),
-
-            carbs:
-                Number(
-                    found[
-                    "Carbohydrate, by difference (g)"
-                    ] ?? 0
-                ),
-
-            fat:
-                Number(
-                    found[
-                    "Total lipid (fat) (g)"
-                    ] ?? 0
-                )
-        },
-
-        region:
-            found.Region,
-
-        subRegion:
-            found.Sub_region
+        title: found.Recipe_title,
+        image: found.img_url || `https://images.unsplash.com/photo-1546069901-ba9599a7e63c`,
+        time: `${found.total_time || 30} min`,
+        calories: Number(found.Calories || 0),
+        description: found.Processes?.replaceAll("||", ". ") || "A delicious recipe discovered by VibeBite Intelligence.",
+        ingredients: found.Ingredients?.split("||").map((i: string) => i.trim()) || [],
+        nutrients: {
+            sodium: `${found["Sodium, Na (mg)"] || 0}mg`,
+            protein: `${found["Protein (g)"] || 0}g`,
+            carbs: `${found["Carbohydrate, by difference (g)"] || 0}g`,
+            fat: `${found["Total lipid (fat) (g)"] || 0}g`
+        }
     };
 }

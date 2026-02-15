@@ -1,0 +1,76 @@
+{
+    "recipes": [
+        {
+            "Recipe_id": "5001",
+            "Recipe_title": "Bitter Gourd (Karela) Stir Fry",
+            "img_url": "https://images.unsplash.com/photo-1582576163090-6c91aed96717",
+            "total_time": "30",
+            "Calories": "120",
+            "Sodium, Na (mg)": "250",
+            "Protein (g)": "4",
+            "Carbohydrate, by difference (g)": "12",
+            "Total lipid (fat) (g)": "7",
+            "Region": "Indian"
+        },
+        {
+            "Recipe_id": "5002",
+            "Recipe_title": "Spicy Saffron Chicken Tikka",
+            "img_url": "https://images.unsplash.com/photo-1599481238640-4c1288750d7a",
+            "total_time": "45",
+            "Calories": "350",
+            "Sodium, Na (mg)": "450",
+            "Protein (g)": "35",
+            "Carbohydrate, by difference (g)": "5",
+            "Total lipid (fat) (g)": "18",
+            "Region": "Indian"
+        },
+        {
+            "Recipe_id": "2613",
+            "Recipe_title": "Magpie's Easy Spicy Falafel Cakes",
+            "img_url": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c",
+            "total_time": "60",
+            "Calories": "409",
+            "Sodium, Na (mg)": "20",
+            "Protein (g)": "15",
+            "Carbohydrate, by difference (g)": "45",
+            "Total lipid (fat) (g)": "15",
+            "Region": "Egyptian"
+        },
+        {
+            "Recipe_id": "5003",
+            "Recipe_title": "Healthy Green Avocado Salad",
+            "img_url": "https://images.unsplash.com/photo-1512621776951-a57141f2eefd",
+            "total_time": "15",
+            "Calories": "210",
+            "Sodium, Na (mg)": "100",
+            "Protein (g)": "5",
+            "Carbohydrate, by difference (g)": "12",
+            "Total lipid (fat) (g)": "18",
+            "Region": "Mexican"
+        },
+        {
+            "Recipe_id": "5004",
+            "Recipe_title": "Comforting Cheesy Pasta Bake",
+            "img_url": "https://images.unsplash.com/photo-1543339308-43e59d6b73a6",
+            "total_time": "40",
+            "Calories": "550",
+            "Sodium, Na (mg)": "600",
+            "Protein (g)": "22",
+            "Carbohydrate, by difference (g)": "65",
+            "Total lipid (fat) (g)": "24",
+            "Region": "Italian"
+        },
+        {
+            "Recipe_id": "5005",
+            "Recipe_title": "Sweet Mango Sticky Rice Dessert",
+            "img_url": "https://images.unsplash.com/photo-1560684352-8497838a2229",
+            "total_time": "25",
+            "Calories": "320",
+            "Sodium, Na (mg)": "50",
+            "Protein (g)": "3",
+            "Carbohydrate, by difference (g)": "58",
+            "Total lipid (fat) (g)": "8",
+            "Region": "Thai"
+        }
+    ]
+}

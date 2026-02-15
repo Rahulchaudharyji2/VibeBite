@@ -156,32 +156,59 @@ function SearchResultsContent() {
                                 initial={{ opacity: 0, x: 20 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: 0.2 }}
-                                className="glass-card p-4 rounded-2xl border-purple-500/30 bg-purple-900/10"
+                                className="glass-card p-6 rounded-2xl border-purple-500/30 bg-purple-900/10 flex flex-col gap-4"
                             >
-                                <div className="flex items-start justify-between mb-2">
-                                    <div className="text-xs text-purple-400 font-bold uppercase tracking-wider">Scientific Analysis</div>
-                                    <FlaskConical size={16} className="text-purple-400" />
-                                </div>
-                                <div className="grid grid-cols-3 gap-2 text-center">
-                                    <div className="bg-black/20 rounded-lg p-2">
-                                        <div className="text-xs text-gray-400">BPM</div>
-                                        <div className="font-mono text-lg font-bold text-white">{scientificData?.bpm || "N/A"}</div>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <FlaskConical size={18} className="text-purple-400" />
+                                        <div className="text-sm text-purple-400 font-bold uppercase tracking-widest">Scientific Insights</div>
                                     </div>
-                                    <div className="bg-black/20 rounded-lg p-2">
-                                        <div className="text-xs text-gray-400">Energy</div>
-                                        <div className="font-mono text-lg font-bold text-[#C6FF33]">
+                                    <div className="px-2 py-0.5 rounded-full bg-purple-500/20 text-[10px] text-purple-300 font-bold border border-purple-500/30">AI RAG ENHANCED</div>
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="bg-black/40 rounded-xl p-3 border border-white/5">
+                                        <div className="text-[10px] text-gray-400 uppercase mb-1">Tempo (BPM)</div>
+                                        <div className="font-mono text-xl font-bold text-white leading-none">{scientificData?.bpm || "N/A"}</div>
+                                    </div>
+                                    <div className="bg-black/40 rounded-xl p-3 border border-white/5">
+                                        <div className="text-[10px] text-gray-400 uppercase mb-1">Energy</div>
+                                        <div className="font-mono text-xl font-bold text-[#C6FF33] leading-none">
                                             {scientificData?.energy > 0.8 ? "High" : scientificData?.energy > 0.5 ? "Med" : "Low"}
                                         </div>
                                     </div>
-                                    <div className="bg-black/20 rounded-lg p-2">
-                                        <div className="text-xs text-gray-400">Detected</div>
-                                        <div className="font-mono text-lg font-bold text-purple-300 truncate">
-                                            {scientificData?.trigger?.split('(')[0].trim() || activeMood || "Vibe"}
+                                    <div className="bg-black/40 rounded-xl p-3 border border-white/5">
+                                        <div className="text-[10px] text-gray-400 uppercase mb-1">Emotion</div>
+                                        <div className="font-mono text-xl font-bold text-purple-300 truncate leading-none capitalize">
+                                            {activeMood || "Vibe"}
                                         </div>
                                     </div>
                                 </div>
-                                <div className="mt-3 text-xs text-gray-400 text-center border-t border-white/5 pt-2">
-                                    Matched <span className="text-white font-bold">{scientificData?.compounds?.join(", ") || "compounds"}</span>
+
+                                {/* AI Recommendation Row */}
+                                <div className="bg-black/20 rounded-xl p-4 border border-white/5">
+                                    <div className="text-[10px] text-purple-400 font-bold uppercase mb-2 flex items-center gap-2">
+                                        <Utensils size={12} /> AI Culinary Recommendation
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {(scientificData?.ai_ingredients || []).map((ing: string, i: number) => (
+                                            <span key={i} className="px-3 py-1 bg-white/10 rounded-full text-xs font-bold text-white border border-white/10 capitalize">
+                                                {ing}
+                                            </span>
+                                        )) || <span className="text-gray-500 text-xs">Analyzing profile...</span>}
+                                    </div>
+                                </div>
+
+                                {/* Scientific Reason */}
+                                <div className="bg-white/5 rounded-xl p-4 border border-purple-500/20">
+                                    <div className="text-[10px] text-gray-400 font-bold uppercase mb-1">The Scientific "Why"</div>
+                                    <p className="text-sm text-gray-200 italic leading-relaxed">
+                                        {scientificData?.reason || "Cross-modal sensory matching based on tempo-gastronomic patterns."}
+                                    </p>
+                                </div>
+
+                                <div className="text-[10px] text-center text-gray-500 font-mono">
+                                    Matched <span className="text-white">{scientificData?.compounds?.join(", ") || "molecular compounds"}</span>
                                 </div>
                             </motion.div>
                         </div>

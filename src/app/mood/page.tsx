@@ -90,21 +90,44 @@ export default function MoodPage() {
                                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                             </div>
                         </div>
-                        <button
-                            onClick={() => {
-                                const input = document.getElementById('song-input') as HTMLInputElement;
-                                const val = input?.value;
-                                if (val) {
-                                    setIsConnecting(true);
-                                    router.push(`/recipe/results?source=youtube&query=${encodeURIComponent(val)}`);
-                                }
-                            }}
-                            disabled={isConnecting}
-                            className="mt-6 w-full py-5 bg-[#FF0000] hover:bg-[#ff1a1a] text-white font-bold rounded-2xl flex items-center justify-center gap-3 transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-lg shadow-[0_0_30px_rgba(255,0,0,0.3)] hover:shadow-[0_0_50px_rgba(255,0,0,0.5)]"
-                        >
-                            {isConnecting ? <Loader2 className="animate-spin" /> : <Music size={24} />}
-                            {isConnecting ? "Analyzing..." : "Analyze Song"}
-                        </button>
+                            <div className="flex flex-col gap-3 mt-8">
+                                <button
+                                    onClick={async () => {
+                                        setIsConnecting(true);
+                                        try {
+                                            const res = await fetch("/api/user/youtube-history");
+                                            const data = await res.json();
+                                            if (data.song) {
+                                                const input = document.getElementById('song-input') as HTMLInputElement;
+                                                if (input) input.value = `${data.song.title} by ${data.song.artist}`;
+                                            }
+                                        } catch (e) {
+                                            console.warn("Sync failed", e);
+                                        } finally {
+                                            setIsConnecting(false);
+                                        }
+                                    }}
+                                    className="w-full py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl flex items-center justify-center gap-2 border border-white/10 transition-all text-sm"
+                                >
+                                    <Music size={16} /> Sync Last Played
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        const input = document.getElementById('song-input') as HTMLInputElement;
+                                        const val = input?.value;
+                                        if (val) {
+                                            setIsConnecting(true);
+                                            router.push(`/recipe/results?source=youtube&query=${encodeURIComponent(val)}`);
+                                        }
+                                    }}
+                                    disabled={isConnecting}
+                                    className="w-full py-5 bg-[#FF0000] hover:bg-[#ff1a1a] text-white font-bold rounded-2xl flex items-center justify-center gap-3 transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-lg shadow-[0_0_30px_rgba(255,0,0,0.3)] hover:shadow-[0_0_50px_rgba(255,0,0,0.5)]"
+                                >
+                                    {isConnecting ? <Loader2 className="animate-spin" /> : <Music size={24} />}
+                                    {isConnecting ? "Analyzing..." : "Analyze Song"}
+                                </button>
+                            </div>
                     </motion.div>
 
                     {/* Manual Selection */}

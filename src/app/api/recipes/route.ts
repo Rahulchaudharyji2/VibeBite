@@ -18,33 +18,47 @@ export async function GET(request: Request) {
 
         const { userId } = await auth();
 
-        // Get User Preferences (Fail Safe)
+        // Get User Preferences from Clerk (Science Heart Guard)
         let isLowSalt = false;
-        // Note: We need to sync Clerk users to Prisma to fetch preferences. 
-        // For now, we will skip the preference check or implementation a webhook later.
-        // if (userId) { ... }
+        let goalList: string[] = goals ? goals.split(",") : [];
+
+        if (userId) {
+            try {
+                const { clerkClient } = await import("@clerk/nextjs/server");
+                const client = await clerkClient();
+                const user = await client.users.getUser(userId);
+                if (user.unsafeMetadata?.isLowSalt === true) {
+                    isLowSalt = true;
+                }
+                // Merge goals from metadata if any
+                const metaGoals = (user.unsafeMetadata?.goals as string[]) || [];
+                goalList = Array.from(new Set([...goalList, ...metaGoals]));
+            } catch (clerkError) {
+                console.warn("[Clerk] Unable to fetch metadata:", clerkError);
+            }
+        }
 
         let recipes: any[] = [];
         let searchQuery = query || "";
-        // If mood is present, we still use it as a base query if no other query exists? 
-        // Actually, logic below handles mood separate.
 
-        let goalList: string[] = [];
-        if (goals) {
-            goalList = goals.split(",");
-        }
+        // PRIORITY LOGIC:
+        // 1. Explicit Query (User typed something in Custom Search)
+        // 2. Flavor (Specific molecular anchor)
+        // 3. Mood (Vibe-based exploration)
+        // 4. Goals (Healthy defaults)
 
-        if (mood) {
-            // Prioritize Vibe/Mood Analysis
-            console.log(`[API] Searching by Mood: ${mood}`);
-            recipes = await getRecipesByFlavor(mood, isLowSalt);
+        if (searchQuery) {
+            console.log(`[API] Searching by Explicit Query: "${searchQuery}"`);
+            recipes = await searchRecipes(searchQuery, goalList, isLowSalt);
         } else if (flavor) {
             console.log(`[API] Searching by Flavor: ${flavor}`);
-            recipes = await getRecipesByFlavor(flavor, isLowSalt);
-        } else {
-            // Fallback to text search or goals
-            console.log(`[API] Searching by Query: "${searchQuery}", Goals: ${goalList.length}`);
-            recipes = await searchRecipes(searchQuery, goalList, isLowSalt);
+            recipes = await getRecipesByFlavor(flavor, isLowSalt, goalList);
+        } else if (mood && mood !== "neutral") {
+            console.log(`[API] Searching by Mood: ${mood}`);
+            recipes = await getRecipesByFlavor(mood, isLowSalt, goalList);
+        } else if (goalList.length > 0) {
+            console.log(`[API] Searching by Goals: ${goalList.join(", ")}`);
+            recipes = await searchRecipes("", goalList, isLowSalt);
         }
 
         return NextResponse.json({ recipes });
