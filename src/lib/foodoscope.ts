@@ -96,15 +96,17 @@ function getFallbackImage(title: string) {
 // FETCH RECIPES (CORRECT METHOD)
 // ============================================
 
-async function fetchRecipesBatch(
+export async function fetchRecipesBatch(
     page: number = 1,
-    limit: number = 50
+    limit: number = 50,
+    params: Record<string, string> = {}
 ) {
     const data = await fetchFromApi(
         "/recipe/recipesinfo",
         {
             page: String(page),
-            limit: String(limit)
+            limit: String(limit),
+            ...params
         }
     );
 
@@ -112,6 +114,36 @@ async function fetchRecipesBatch(
         return [];
 
     return data.payload.data;
+}
+
+// ============================================
+// HELPER: MAP RECIPE DATA
+// ============================================
+
+function mapRecipeData(rawRecipes: any[], molecularIngredients: string[] = []) {
+    return rawRecipes.map((r) => {
+        const title = r.Recipe_title ?? "Unknown Recipe";
+
+        return {
+            id: r.Recipe_id,
+            title,
+            image: r.img_url ?? getFallbackImage(title),
+            time: `${r.total_time ?? 30} min`,
+            calories: Number(r.Calories ?? r["Energy (kcal)"] ?? 0),
+            sodium: Number(r["Sodium, Na (mg)"] ?? 0),
+            rating: 4.5,
+            scientificMatch: molecularIngredients.length > 0
+                ? (molecularIngredients.find((i) => title.toLowerCase().includes(i.toLowerCase())) ?? "General Match")
+                : "Direct Match",
+            macros: {
+                protein: Number(r["Protein (g)"] ?? 0),
+                carbs: Number(r["Carbohydrate, by difference (g)"] ?? 0),
+                fat: Number(r["Total lipid (fat) (g)"] ?? 0)
+            },
+            region: r.Region ?? "Global",
+            subRegion: r.Sub_region
+        };
+    });
 }
 
 // ============================================
@@ -220,87 +252,7 @@ export async function getRecipesByFlavor(
     // STEP 5: Map
     // ========================================
 
-    let recipes =
-        rawRecipes.map((r) => {
-            const title =
-                r.Recipe_title ??
-                "Unknown Recipe";
-
-            return {
-                id: r.Recipe_id,
-
-                title,
-
-                image:
-                    r.img_url ??
-                    getFallbackImage(
-                        title
-                    ),
-
-                time: `${r.total_time ??
-                    30
-                    } min`,
-
-                calories:
-                    Number(
-                        r.Calories ??
-                        r[
-                        "Energy (kcal)"
-                        ] ??
-                        0
-                    ),
-
-                sodium:
-                    Number(
-                        r[
-                        "Sodium, Na (mg)"
-                        ] ?? 0
-                    ),
-
-                rating: 4.5,
-
-                scientificMatch:
-                    molecularIngredients.find(
-                        (i) =>
-                            title
-                                .toLowerCase()
-                                .includes(
-                                    i.toLowerCase()
-                                )
-                    ) ??
-                    "General Match",
-
-                macros: {
-                    protein:
-                        Number(
-                            r[
-                            "Protein (g)"
-                            ] ?? 0
-                        ),
-
-                    carbs:
-                        Number(
-                            r[
-                            "Carbohydrate, by difference (g)"
-                            ] ?? 0
-                        ),
-
-                    fat:
-                        Number(
-                            r[
-                            "Total lipid (fat) (g)"
-                            ] ?? 0
-                        )
-                },
-
-                region:
-                    r.Region ??
-                    "Global",
-
-                subRegion:
-                    r.Sub_region
-            };
-        });
+    let recipes = mapRecipeData(rawRecipes, molecularIngredients);
 
     // ========================================
     // STEP 6: Low sodium filter
@@ -339,13 +291,109 @@ export async function getRecipesByFlavor(
 // ============================================
 
 export async function searchRecipes(
-    query: string,
+    query: string = "",
+    goals: string[] = [],
     isLowSalt = false
 ) {
-    return getRecipesByFlavor(
-        query,
-        isLowSalt
-    );
+    console.log(`[Foodoscope] Search: "${query}", Goals: ${JSON.stringify(goals)}`);
+
+    // Fetch a larger batch to filter client-side
+    // Since API search params are unreliable, we fetch a broad set and filter.
+    // Determine if we should use a goal as a search term to get better initial candidates
+    // Priority: Query > Vegan > Keto > Gluten Free > etc.
+    let searchTerm = query;
+    const lowerGoals = goals.map(g => g.toLowerCase());
+
+    if ((!searchTerm || searchTerm.trim() === "") && goals.length > 0) {
+        if (lowerGoals.includes("vegan")) searchTerm = "Vegan";
+        else if (lowerGoals.includes("keto")) searchTerm = "Keto";
+        else if (lowerGoals.includes("gluten-free")) searchTerm = "Gluten Free";
+        else if (lowerGoals.includes("paleo")) searchTerm = "Paleo";
+    }
+
+    // Fetch a larger batch to filter client-side
+    // We pass 'q' if we have a search term to narrow down the pool (if supported by API)
+    // Recipe_title seems too strict.
+    const apiParams: Record<string, string> = {};
+    if (searchTerm && searchTerm.trim() !== "") {
+        apiParams["q"] = searchTerm;
+    }
+
+    // Optimization: Avoid Promise.all to prevent 429 Rate Limit errors.
+    // Try to fetch with the search term first.
+    let rawData = await fetchRecipesBatch(1, 50, apiParams);
+
+    // If specific search failed (e.g. q=Vegan returned 0), fallback to generic batch
+    if (rawData.length === 0 && searchTerm) {
+        console.log(`[Foodoscope] Search for "${searchTerm}" returned 0 results. Falling back to generic batch.`);
+        rawData = await fetchRecipesBatch(1, 50);
+    }
+
+    let recipes = mapRecipeData(rawData);
+
+    // 1. Text Search (Client-side fallback)
+    if (query && query.trim().length > 0) {
+        const q = query.toLowerCase().trim();
+        recipes = recipes.filter(r => r.title.toLowerCase().includes(q));
+    }
+
+    // 2. Goal Filtering
+    if (goals.length > 0) {
+        recipes = recipes.filter(r => {
+            let pass = true;
+
+            // Health Logic
+            if (goals.includes("high-protein")) {
+                // > 20g protein
+                if (r.macros.protein < 20) pass = false;
+            }
+
+            if (goals.includes("low-sodium") || goals.includes("heart-healthy")) {
+                // < 400mg sodium
+                if (r.sodium > 400) pass = false;
+            }
+
+            if (goals.includes("keto")) {
+                // Low carb (< 20g) and High Fat
+                // Relaxed from 15 to 20 to find more matches in random batches
+                if (r.macros.carbs > 20) pass = false;
+            }
+
+            if (goals.includes("vegan")) {
+                const lowerTitle = r.title.toLowerCase();
+                // Strict: meat, chicken, beef, pork, fish, egg, cheese, cream, milk, honey, butter
+                const nonVeganTerms = ["chicken", "beef", "pork", "steak", "fish", "salmon", "shrimp", "tuna", "egg", "cheese", "cream", "milk", "butter", "honey", "yogurt", "sausage", "bacon", "meat", "lamb", "duck", "turkey"];
+
+                const isExplicitProhibitive = nonVeganTerms.some(term => lowerTitle.includes(term));
+                const isExplicitVegan = lowerTitle.includes("vegan") || lowerTitle.includes("plant based");
+
+                // If it explicitly says "Vegan", it's good.
+                // If it contains animal products, reject.
+                // If ambiguous, we accept it IF we are falling back to generic data, to ensure we show SOMETHING.
+                if (!isExplicitVegan) {
+                    if (isExplicitProhibitive) pass = false;
+                }
+            }
+
+            if (goals.includes("gluten-free")) {
+                if (!r.title.toLowerCase().includes("gluten free") && !r.title.toLowerCase().includes("gf")) pass = false;
+            }
+
+            if (goals.includes("weight-loss")) {
+                // Low calorie (< 400)
+                if (r.calories > 400) pass = false;
+            }
+
+            return pass;
+        });
+    }
+
+    // 3. Legacy Low Salt Flag
+    if (isLowSalt) {
+        recipes = recipes.filter(r => r.sodium < 100);
+    }
+
+    return recipes.slice(0, 12);
 }
 
 // ============================================
